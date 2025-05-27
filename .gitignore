@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+# Env
+${VENV_DIR}/
+# Logs
+logs/
+*.log
+# Editor
+.vscode/
+.idea/
