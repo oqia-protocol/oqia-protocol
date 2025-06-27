@@ -1,0 +1,9 @@
+[submodule "flashloan-arbitrage-sepolia/lib/openzeppelin-contracts"]
+	path = flashloan-arbitrage-sepolia/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "flashloan-arbitrage-sepolia/lib/aave-v3-core"]
+	path = flashloan-arbitrage-sepolia/lib/aave-v3-core
+	url = https://github.com/aave/aave-v3-core
+[submodule "flashloan-arbitrage-sepolia/lib/aave-v3-origin"]
+	path = flashloan-arbitrage-sepolia/lib/aave-v3-origin
+	url = https://github.com/aave/aave-v3-origin
