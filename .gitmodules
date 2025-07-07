@@ -7,3 +7,18 @@
 [submodule "flashloan-arbitrage-sepolia/lib/aave-v3-origin"]
 	path = flashloan-arbitrage-sepolia/lib/aave-v3-origin
 	url = https://github.com/aave/aave-v3-origin
+[submodule "BUGHUNTING/SHERLOCK/sherlock-sherclaim-poc/lib/forge-std"]
+	path = BUGHUNTING/SHERLOCK/sherlock-sherclaim-poc/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "BUGHUNTING/SHERLOCK/sherlock-sherclaim-poc/lib/openzeppelin-contracts"]
+	path = BUGHUNTING/SHERLOCK/sherlock-sherclaim-poc/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "RESONATE/lib/forge-std"]
+	path = RESONATE/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "poc/lib/forge-std"]
+	path = poc/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "poc/poc/lib/forge-std"]
+	path = poc/poc/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
