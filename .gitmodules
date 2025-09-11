@@ -22,3 +22,15 @@
 [submodule "poc/poc/lib/forge-std"]
 	path = poc/poc/lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
+[submodule "auco-foundry/lib/forge-std"]
+	path = auco-foundry/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "auco-foundry/lib/openzeppelin-contracts"]
+	path = auco-foundry/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "auco-foundry/lib/aave-v3-core"]
+	path = auco-foundry/lib/aave-v3-core
+	url = https://github.com/aave/aave-v3-core
+[submodule "oqia-protocol/lib/forge-std"]
+	path = oqia-protocol/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
