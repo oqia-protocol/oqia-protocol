@@ -1,5 +1,4 @@
 const { expect } = require("chai");
-const { ethers, upgrades } = require("hardhat");
 
 describe("OqiaBotFactory (Hardhat Tests)", function () {
     let OqiaBotFactory, factoryProxy;
