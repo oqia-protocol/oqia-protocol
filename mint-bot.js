@@ -8,7 +8,7 @@ const chalk = require("chalk");
 require("dotenv").config();
 
 // --- CONFIGURATION ---
-const FACTORY_ADDRESS = "0xC5725bD1b6867278631Daf15b732D1d1d24E447E"; // Your deployed factory address
+const FACTORY_ADDRESS = "0x851356ae760d987E095750cCeb3bC6014560891C"; // Your deployed factory address on Sepolia
 const ALCHEMY_RPC_URL = process.env.ALCHEMY_SEPOLIA_RPC_URL;
 const OWNER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY;
 
@@ -38,7 +38,7 @@ async function main() {
     const metadataURI = "ipfs://bafyreig5q252nvzgf4fhfr3q2cl7sf3zax2qpwemnp6gcgknmhevamtkny/metadata.json"; // Example IPFS URI
     
     // A random salt nonce to ensure a unique wallet address
-    const saltNonce = Math.floor(Math.random() * 1e16);
+    const saltNonce = Math.floor(Math.random() * 1000000);
     console.log(`🧂 Using Salt Nonce: ${saltNonce}`);
 
     try {
@@ -54,7 +54,8 @@ async function main() {
             threshold,
             fallbackHandler,
             metadataURI,
-            saltNonce
+            saltNonce,
+            { gasLimit: 500000 }
         );
 
         console.log(`   - Transaction sent! Hash: ${tx.hash}`);

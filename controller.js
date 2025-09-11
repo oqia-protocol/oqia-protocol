@@ -16,6 +16,7 @@ const chalk = {
     gray: (text) => text,
     red: (text) => text,
 };
+// eslint-disable-next-line no-unused-vars
 const SAFE_ABI = [
     {
         "inputs": [],
