@@ -3,7 +3,7 @@
 This document lists the addresses of the contracts deployed on the Sepolia testnet.
 
 ## OqiaBotFactory
-*   **Proxy Address:** `0x39570EF64a95e61D759ba2276f8abb163D62714C`
+*   **Proxy Address:** `0xC5725bD1b6867278631Daf15b732D1d1d24E447E`
 *   **Implementation Address:** `0x4B1C1Ad87B6282314D3CaBE0FFF518b020c4dC61`
 *   **Description:** A factory contract responsible for creating Oqia Bot NFT wallets (Gnosis Safes). It mints an ERC721 token representing ownership of a bot wallet.
 
@@ -13,5 +13,5 @@ This document lists the addresses of the contracts deployed on the Sepolia testn
 *   **Description:** A registry contract for Oqia modules. It allows the owner to register new modules and mint licenses for them, represented as ERC721 tokens.
 
 ## OqiaSessionKeyManager
-*   **Contract Address:** `0x5983D1006f3C5B01A630F6C81AC784aacAD39Fa9`
+*   **Contract Address:** `0x7059886b92c9C83Eb73271d403DaB90DaC52A229`
 *   **Description:** A contract designed to manage session keys for a Gnosis Safe, enabling delegated execution of transactions with predefined permissions and limits.
