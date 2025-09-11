@@ -21,7 +21,6 @@
     "@nomicfoundation/hardhat-verify": "^2.0.14",
     "@nomicfoundation/ignition-core": "^0.15.13",
     "@openzeppelin/hardhat-upgrades": "^3.9.1",
-    "@safe-global/safe-contracts": "^1.4.1-2",
     "@typechain/ethers-v6": "^0.5.1",
     "@typechain/hardhat": "^9.1.0",
     "@types/chai": "^4.3.20",
@@ -29,7 +28,7 @@
     "chai": "^4.5.0",
     "ethers": "^6.15.0",
     "hardhat": "^2.26.3",
-    "hardhat-gas-reporter": "^1.0.10",
+    "hardhat-gas-reporter": "^2.3.0",
     "solidity-coverage": "^0.8.16",
     "ts-node": "^10.9.2",
     "typechain": "^8.3.2",
@@ -38,7 +37,7 @@
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
     "@openzeppelin/contracts-upgradeable": "^5.4.0",
-    "cookie": "^0.7.2",
+    "cookie": "^1.0.2",
     "dotenv": "^17.2.2",
     "tmp": "^0.2.5"
   }

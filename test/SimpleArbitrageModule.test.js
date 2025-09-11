@@ -15,16 +15,6 @@ describe("SimpleArbitrageModule", function () {
         return mockERC20;
     }
 
-    // Mock Uniswap V2 Router Contract
-    async function deployMockUniswapRouter() {
-        const MockUniswapRouter = await ethers.getContractFactory("MockUniswapRouter");
-        const mockUniswapRouter = await MockUniswapRouter.deploy();
-        await mockUniswapRouter.waitForDeployment();
-await mockERC20B.mint(mockUniswapRouter.target, ethers.parseEther("1000"));
-await mockERC20B.mint(mockUniswapRouter.target, ethers.parseEther("1000"));
-        return mockUniswapRouter;
-    }
-
     before(async function () {
         [deployer, safe, other] = await ethers.getSigners();
 
@@ -35,16 +25,17 @@ await mockERC20B.mint(mockUniswapRouter.target, ethers.parseEther("1000"));
         mockERC20B = await MockERC20Factory.deploy("Token B", "TKB");
         await mockERC20B.waitForDeployment();
 
-        // Deploy Mock Uniswap Router
+        // Deploy Mock Uniswap Router and fund it with tokenB for swaps
         const MockUniswapRouterFactory = await ethers.getContractFactory("MockUniswapRouter");
         mockUniswapRouter = await MockUniswapRouterFactory.deploy();
         await mockUniswapRouter.waitForDeployment();
-await mockERC20B.mint(mockUniswapRouter.target, ethers.parseEther("1000"));
-await mockERC20B.mint(mockUniswapRouter.target, ethers.parseEther("1000"));
+        await mockERC20B.mint(mockUniswapRouter.target, ethers.parseEther("2000"));
+        expect(await mockERC20B.balanceOf(mockUniswapRouter.target)).to.equal(ethers.parseEther("2000"));
+
 
         // Deploy SimpleArbitrageModule
-        SimpleArbitrageModule = await ethers.getContractFactory("SimpleArbitrageModule");
-        simpleArbitrageModule = await SimpleArbitrageModule.deploy(mockUniswapRouter.target);
+        const SimpleArbitrageModuleFactory = await ethers.getContractFactory("SimpleArbitrageModule");
+        simpleArbitrageModule = await SimpleArbitrageModuleFactory.deploy(mockUniswapRouter.target);
         await simpleArbitrageModule.waitForDeployment();
     });
 
@@ -80,6 +71,9 @@ await mockERC20A.connect(safe).approve(simpleArbitrageModule.target, amountIn);
             ).to.be.revertedWith("Only the authorized Safe can call this");
 
             // Call from 'safe' account, should not revert (further checks in executeArbitrage tests)
+            expect(await mockERC20A.balanceOf(safe.address)).to.equal(amountIn);
+            expect(await mockERC20A.allowance(safe.address, simpleArbitrageModule.target)).to.equal(amountIn);
+            await mockUniswapRouter.setSwapResults([ethers.parseEther("1"), ethers.parseEther("1")]);
             await expect(
                 simpleArbitrageModule.connect(safe).executeArbitrage(
                     safe.address,
@@ -97,9 +91,15 @@ await mockERC20A.connect(safe).approve(simpleArbitrageModule.target, amountIn);
         const expectedReturnAmountA = ethers.parseEther("95"); // Mocked arbitrage profit
 
         beforeEach(async function () {
-            // Reset balances and approvals for each test
+            // Create a new, isolated Safe wallet for each test to avoid state pollution
+            safe = ethers.Wallet.createRandom().connect(ethers.provider);
+            await deployer.sendTransaction({ to: safe.address, value: ethers.parseEther("1.0") }); // Fund wallet
 
+            // Mint initial tokens to the new Safe wallet
             await mintTokens(mockERC20A, safe.address, initialAmountA);
+
+            // Approve the module to spend the tokens
+            await mockERC20A.connect(safe).approve(simpleArbitrageModule.target, initialAmountA);
 
             // Configure mock router for predictable swaps
             await mockUniswapRouter.setSwapResults([expectedAmountB, expectedReturnAmountA]);
