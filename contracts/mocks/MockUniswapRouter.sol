@@ -24,7 +24,7 @@ contract MockUniswapRouter {
         require(path.length == 2, "MockRouter: Invalid path");
         require(swapCounter < swapResults.length, "MockRouter: No more swap results configured");
 
-        // IERC20(path[0]).transferFrom(msg.sender, address(this), amountIn);
+        IERC20(path[0]).transferFrom(msg.sender, address(this), amountIn);
         
         uint256 returnAmount = swapResults[swapCounter];
         swapCounter++;

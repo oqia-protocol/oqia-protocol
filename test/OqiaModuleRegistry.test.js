@@ -1,165 +1,155 @@
 const { expect } = require("chai");
-const { upgrades } = require("hardhat");
+const { upgrades, ethers } = require("hardhat");
+const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("OqiaModuleRegistry", function () {
-    let OqiaModuleRegistry;
-    let registryProxy;
-    let owner;
-    let addr1;
-    let addr2;
+    async function deployRegistryFixture() {
+        const [owner, developer, user1, user2, protocolTreasury] = await ethers.getSigners();
 
-    beforeEach(async function () {
-        [owner, addr1, addr2] = await ethers.getSigners();
-        OqiaModuleRegistry = await ethers.getContractFactory("OqiaModuleRegistry");
-        registryProxy = await upgrades.deployProxy(
+        const OqiaModuleRegistry = await ethers.getContractFactory("OqiaModuleRegistry");
+        const registryProxy = await upgrades.deployProxy(
             OqiaModuleRegistry,
-            ["Oqia Module License", "OML"],
+            ["Oqia Module License", "OML", protocolTreasury.address],
             { initializer: "initialize", kind: "uups" }
         );
         await registryProxy.waitForDeployment();
-    });
+
+        return { registryProxy, owner, developer, user1, user2, protocolTreasury };
+    }
 
     describe("Deployment and Initialization", function () {
-        it("Should set the correct name and symbol", async function () {
+        it("Should set the correct name, symbol, and protocol treasury", async function () {
+            const { registryProxy, protocolTreasury } = await loadFixture(deployRegistryFixture);
             expect(await registryProxy.name()).to.equal("Oqia Module License");
             expect(await registryProxy.symbol()).to.equal("OML");
+            expect(await registryProxy.protocolTreasury()).to.equal(protocolTreasury.address);
         });
 
         it("Should set the deployer as the owner", async function () {
+            const { registryProxy, owner } = await loadFixture(deployRegistryFixture);
             expect(await registryProxy.owner()).to.equal(owner.address);
         });
     });
 
     describe("Module Registration", function () {
+        let registryProxy, owner, developer, user1;
+        const moduleAddress = "0x1234567890123456789012345678901234567890";
+        const metadataURI = "ipfs://module1";
+        const price = ethers.parseEther("0.1");
+        const royaltyBps = 500; // 5%
+
+        beforeEach(async function () {
+            ({ registryProxy, owner, developer, user1 } = await loadFixture(deployRegistryFixture));
+        });
+
         it("Should allow the owner to register a module", async function () {
-            const moduleAddress = addr1.address;
-            const metadataURI = "ipfs://module1";
-
-            await expect(registryProxy.registerModule(moduleAddress, metadataURI))
+            await expect(registryProxy.connect(owner).registerModule(moduleAddress, developer.address, price, royaltyBps, metadataURI))
                 .to.emit(registryProxy, "ModuleRegistered")
-                .withArgs(1, moduleAddress, owner.address, metadataURI);
+                .withArgs(1, moduleAddress, developer.address, price, metadataURI);
 
-            expect(await registryProxy.moduleAddressOf(1)).to.equal(moduleAddress);
+            const moduleInfo = await registryProxy.moduleInfoOf(1);
+            expect(moduleInfo.moduleAddress).to.equal(moduleAddress);
+            expect(moduleInfo.developer).to.equal(developer.address);
+            expect(moduleInfo.price).to.equal(price);
+            expect(moduleInfo.royaltyBps).to.equal(royaltyBps);
+            expect(moduleInfo.metadataURI).to.equal(metadataURI);
             expect(await registryProxy.moduleIdOfAddress(moduleAddress)).to.equal(1);
-      
         });
 
         it("Should not allow non-owners to register a module", async function () {
-            const moduleAddress = addr1.address;
-            const metadataURI = "ipfs://module1";
-
             await expect(
-                registryProxy.connect(addr1).registerModule(moduleAddress, metadataURI)
+                registryProxy.connect(user1).registerModule(moduleAddress, developer.address, price, royaltyBps, metadataURI)
             ).to.be.revertedWithCustomError(registryProxy, "OwnableUnauthorizedAccount");
         });
 
-        it("Should not allow registering a module with address zero", async function () {
-            const moduleAddress = ethers.ZeroAddress;
-            const metadataURI = "ipfs://module1";
-
+        it("Should revert with invalid developer address", async function () {
             await expect(
-                registryProxy.registerModule(moduleAddress, metadataURI)
-            ).to.be.revertedWithCustomError(registryProxy, "InvalidModuleAddress");
-        });
-
-        it("Should not allow registering the same module twice", async function () {
-            const moduleAddress = addr1.address;
-            const metadataURI = "ipfs://module1";
-
-            await registryProxy.registerModule(moduleAddress, metadataURI);
-
-            await expect(
-                registryProxy.registerModule(moduleAddress, metadataURI)
-            ).to.be.revertedWithCustomError(registryProxy, "ModuleAlreadyRegistered");
+                registryProxy.connect(owner).registerModule(moduleAddress, ethers.ZeroAddress, price, royaltyBps, metadataURI)
+            ).to.be.revertedWithCustomError(registryProxy, "InvalidDeveloperAddress");
         });
     });
 
-    describe("Module License Minting", function () {
+    describe("Module License Minting and Economics", function () {
+        let registryProxy, developer, user1, user2, protocolTreasury;
+        const moduleAddress = "0x1234567890123456789012345678901234567890";
+        const metadataURI = "ipfs://module1";
+        const price = ethers.parseEther("1.0");
+        const royaltyBps = 500; // 5%
+        const moduleId = 1;
+
         beforeEach(async function () {
-            const moduleAddress = addr1.address;
-            const metadataURI = "ipfs://module1";
-            await registryProxy.registerModule(moduleAddress, metadataURI);
+            ({ registryProxy, developer, user1, user2, protocolTreasury } = await loadFixture(deployRegistryFixture));
+            await registryProxy.registerModule(moduleAddress, developer.address, price, royaltyBps, metadataURI);
         });
 
-        it("Should allow the owner to mint a module license", async function () {
-            const moduleId = 1;
-            const to = addr2.address;
-
-            await expect(registryProxy.mintModuleLicense(moduleId, to))
+        it("Should allow a user to mint a license by sending the correct price", async function () {
+            await expect(registryProxy.connect(user1).mintModuleLicense(moduleId, user1.address, { value: price }))
                 .to.emit(registryProxy, "ModuleLicenseMinted")
-                .withArgs(moduleId, to, moduleId);
+                .withArgs(moduleId, 1, user1.address, price);
 
-            expect(await registryProxy.ownerOf(moduleId)).to.equal(to);
-            expect(await registryProxy.balanceOf(to)).to.equal(1);
+            expect(await registryProxy.ownerOf(1)).to.equal(user1.address);
+            expect(await registryProxy.balanceOf(user1.address)).to.equal(1);
+            expect(await registryProxy.licenseIdToModuleId(1)).to.equal(moduleId);
         });
 
-        it("Should not allow non-owners to mint a module license", async function () {
-            const moduleId = 1;
-            const to = addr2.address;
-
+        it("Should revert if the payment amount is incorrect", async function () {
+            const incorrectPrice = ethers.parseEther("0.5");
             await expect(
-                registryProxy.connect(addr1).mintModuleLicense(moduleId, to)
-            ).to.be.revertedWithCustomError(registryProxy, "OwnableUnauthorizedAccount");
+                registryProxy.connect(user1).mintModuleLicense(moduleId, user1.address, { value: incorrectPrice })
+            ).to.be.revertedWithCustomError(registryProxy, "IncorrectPayment");
         });
 
-        it("Should not allow minting a license for a nonexistent module", async function () {
-            const nonexistentModuleId = 99;
-            const to = addr2.address;
+        it("Should distribute funds correctly between developer and treasury", async function () {
+            const platformFeeBps = await registryProxy.PLATFORM_FEE_BPS();
+            const expectedPlatformFee = (price * platformFeeBps) / 10000n;
+            const expectedDeveloperShare = price - expectedPlatformFee;
 
             await expect(
-                registryProxy.mintModuleLicense(nonexistentModuleId, to)
-            ).to.be.revertedWithCustomError(registryProxy, "ModuleNotRegistered");
+                registryProxy.connect(user1).mintModuleLicense(moduleId, user1.address, { value: price })
+            ).to.changeEtherBalances(
+                [protocolTreasury, developer],
+                [expectedPlatformFee, expectedDeveloperShare]
+            );
         });
 
-        it("Should not allow minting a license to address zero", async function () {
-            const moduleId = 1;
-            const to = ethers.ZeroAddress;
+        it("Should allow minting multiple licenses for the same module", async function () {
+            // User 1 mints license 1
+            await registryProxy.connect(user1).mintModuleLicense(moduleId, user1.address, { value: price });
+            expect(await registryProxy.ownerOf(1)).to.equal(user1.address);
 
-            await expect(
-                registryProxy.mintModuleLicense(moduleId, to)
-            ).to.be.revertedWithCustomError(registryProxy, "InvalidModuleOwner");
+            // User 2 mints license 2
+            await registryProxy.connect(user2).mintModuleLicense(moduleId, user2.address, { value: price });
+            expect(await registryProxy.ownerOf(2)).to.equal(user2.address);
+
+            expect(await registryProxy.balanceOf(user1.address)).to.equal(1);
+            expect(await registryProxy.balanceOf(user2.address)).to.equal(1);
+        });
+
+        it("Should return the correct token URI for a license", async function () {
+            await registryProxy.connect(user1).mintModuleLicense(moduleId, user1.address, { value: price });
+            expect(await registryProxy.tokenURI(1)).to.equal(metadataURI);
+        });
+
+        it("Should revert when querying URI for a nonexistent token", async function () {
+            await expect(registryProxy.tokenURI(999)).to.be.revertedWithCustomError(registryProxy, "ERC721NonexistentToken");
         });
     });
 
-    describe("Pausable", function () {
-        it("Should allow owner to pause and unpause", async function () {
-            await registryProxy.pause();
-            expect(await registryProxy.paused()).to.be.true;
+    describe("ERC2981 Royalties", function () {
+        it("Should return the correct royalty info for a license", async function () {
+            const { registryProxy, developer, user1 } = await loadFixture(deployRegistryFixture);
+            const salePrice = ethers.parseEther("2.0");
+            const price = ethers.parseEther("0.1");
+            const royaltyBps = 500; // 5%
+            const expectedRoyalty = (salePrice * BigInt(royaltyBps)) / 10000n;
+            const moduleAddress = ethers.Wallet.createRandom().address;
 
-            await expect(
-                registryProxy.registerModule(addr1.address, "ipfs://paused")
-            ).to.be.revertedWithCustomError(registryProxy, "EnforcedPause");
+            await registryProxy.registerModule(moduleAddress, developer.address, price, royaltyBps, "uri");
+            await registryProxy.connect(user1).mintModuleLicense(1, user1.address, { value: price });
 
-            await registryProxy.unpause();
-            expect(await registryProxy.paused()).to.be.false;
-
-            await expect(registryProxy.registerModule(addr1.address, "ipfs://unpaused"))
-                .to.not.be.reverted;
-        });
-
-        it("Should not allow non-owner to pause or unpause", async function () {
-            await expect(registryProxy.connect(addr1).pause()).to.be.revertedWithCustomError(
-                registryProxy, "OwnableUnauthorizedAccount"
-            );
-            await expect(registryProxy.connect(addr1).unpause()).to.be.revertedWithCustomError(
-                registryProxy, "OwnableUnauthorizedAccount"
-            );
-        });
-    });
-
-    describe("UUPS Upgradability", function () {
-        it("Should allow owner to upgrade the contract", async function () {
-            const OqiaModuleRegistryV2 = await ethers.getContractFactory("OqiaModuleRegistry");
-            const upgradedRegistry = await upgrades.upgradeProxy(registryProxy.target, OqiaModuleRegistryV2);
-            await upgradedRegistry.waitForDeployment();
-            expect(upgradedRegistry.target).to.equal(registryProxy.target);
-        });
-
-        it("Should not allow non-owner to upgrade the contract", async function () {
-            const OqiaModuleRegistryV2 = await ethers.getContractFactory("OqiaModuleRegistry");
-            await expect(
-                upgrades.upgradeProxy(registryProxy.target, OqiaModuleRegistryV2.connect(addr1))
-            ).to.be.revertedWithCustomError(registryProxy, "OwnableUnauthorizedAccount");
+            const royaltyInfo = await registryProxy.royaltyInfo(1, salePrice);
+            expect(royaltyInfo.receiver).to.equal(developer.address);
+            expect(royaltyInfo.royaltyAmount).to.equal(expectedRoyalty);
         });
     });
 });

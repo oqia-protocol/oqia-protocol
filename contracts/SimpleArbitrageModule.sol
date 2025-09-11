@@ -18,6 +18,7 @@ interface IUniswapV2Router {
 interface IERC20 {
     function approve(address spender, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
 contract SimpleArbitrageModule {
@@ -41,12 +42,18 @@ contract SimpleArbitrageModule {
     /// @param tokenB The address of the intermediate token (e.g., USDC).
     /// @param amountIn The amount of tokenA to start the trade with.
     function executeArbitrage(address safe, address tokenA, address tokenB, uint256 amountIn) external onlySafe(safe) {
-        // Step 1: Approve the Uniswap router to spend the Safe's tokens
-        // The module calls 'approve' on behalf of the Safe.
-        // This requires the module to be an authorized module on the Safe.
+        if (amountIn == 0) {
+            return; // Nothing to do
+        }
+
+        // Step 1: Pull tokens from the Safe to this module.
+        // This requires the Safe to have approved this module to spend its tokenA.
+        IERC20(tokenA).transferFrom(safe, address(this), amountIn);
+
+        // Step 2: Approve the Uniswap router to spend the module's newly acquired tokenA
         IERC20(tokenA).approve(address(uniswapRouter), amountIn);
         
-        // Step 2: Define the swap paths
+        // Step 3: Define the swap paths
         address[] memory path1 = new address[](2);
         path1[0] = tokenA;
         path1[1] = tokenB;
@@ -55,7 +62,7 @@ contract SimpleArbitrageModule {
         path2[0] = tokenB;
         path2[1] = tokenA;
 
-        // Step 3: Execute the first swap (A -> B)
+        // Step 4: Execute the first swap (A -> B)
         uint[] memory amounts = uniswapRouter.swapExactTokensForTokens(
             amountIn,
             0, // We accept any amount out for this simple example
@@ -66,12 +73,15 @@ contract SimpleArbitrageModule {
         
         uint amountTokenB = amounts[1];
 
-        // Step 4: Execute the second swap (B -> A)
+        // Step 5: Approve the router to spend the module's newly acquired tokenB
+        IERC20(tokenB).approve(address(uniswapRouter), amountTokenB);
+
+        // Step 6: Execute the second swap (B -> A)
         uniswapRouter.swapExactTokensForTokens(
             amountTokenB,
             0, // Slippage control would be critical here in a real bot
             path2,
-            safe, // The final tokens are sent back to the Safe wallet
+            safe, // The final tokens (and any profit) are sent back to the Safe wallet
             block.timestamp
         );
     }
