@@ -12,7 +12,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
-import "@safe-global/safe-contracts/contracts/proxies/SafeProxyFactory.sol";
+import "./vendor/safe-contracts/SafeProxyFactory.sol";
 
 interface ISafe {
     function setup(

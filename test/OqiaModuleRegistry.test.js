@@ -1,4 +1,5 @@
 const { expect } = require("chai");
+const { upgrades } = require("hardhat");
 
 describe("OqiaModuleRegistry", function () {
     let OqiaModuleRegistry;
