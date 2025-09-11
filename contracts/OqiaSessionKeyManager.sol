@@ -29,11 +29,19 @@ contract OqiaSessionKeyManager is Ownable {
     /// @param validUntil The Unix timestamp until which the key is valid.
     /// @param valueLimit The maximum value in wei that can be sent in a single transaction.
     /// @param permissions An array of specific functions the session key is allowed to call.
+    /// @param txCount The number of transactions made in the current rate limit period.
+    /// @param lastTxTimestamp The timestamp of the last transaction made.
+    /// @param rateLimitPeriodSeconds The duration of the rate-limiting window in seconds.
+    /// @param rateLimitTxCount The maximum number of transactions allowed within that period.
     struct SessionKey {
         address key;
         uint256 validUntil;
         uint256 valueLimit;
         FunctionPermission[] permissions;
+        uint256 txCount;
+        uint256 lastTxTimestamp;
+        uint32 rateLimitPeriodSeconds;
+        uint32 rateLimitTxCount;
     }
 
     // Mapping: Safe wallet => SessionKey struct
@@ -49,25 +57,26 @@ contract OqiaSessionKeyManager is Ownable {
         address indexed sessionKey,
         uint256 validUntil,
         uint256 valueLimit,
-        FunctionPermission[] permissions
+        FunctionPermission[] permissions,
+        uint32 rateLimitPeriodSeconds,
+        uint32 rateLimitTxCount
     );
     event SessionKeyUsed(address indexed safe, address indexed sessionKey, address to, uint256 value);
+    event RateLimitExceeded(address indexed safe, address indexed sessionKey, uint256 txCount, uint256 limit);
+
 
     constructor() Ownable(msg.sender) {}
 
     /// @notice Authorizes a session key for a given Safe wallet with specific functional permissions.
     /// @dev The caller (msg.sender) must be an owner of the Safe.
-    /// @param safe The address of the Safe wallet.
-    /// @param sessionKey The address of the session key to authorize.
-    /// @param validUntil The Unix timestamp until which the key is valid.
-    /// @param valueLimit The maximum value in wei for a single transaction.
-    /// @param permissions An array of functions the session key is permitted to call.
     function authorizeSessionKey(
         address safe,
         address sessionKey,
         uint256 validUntil,
         uint256 valueLimit,
-        FunctionPermission[] calldata permissions
+        FunctionPermission[] calldata permissions,
+        uint32 rateLimitPeriodSeconds,
+        uint32 rateLimitTxCount
     ) external {
         // Only an owner of the Safe can authorize a session key for it.
         require(ISafe(safe).isOwner(msg.sender), "Caller is not a Safe owner");
@@ -86,6 +95,10 @@ contract OqiaSessionKeyManager is Ownable {
         sk.key = sessionKey;
         sk.validUntil = validUntil;
         sk.valueLimit = valueLimit;
+        sk.rateLimitPeriodSeconds = rateLimitPeriodSeconds;
+        sk.rateLimitTxCount = rateLimitTxCount;
+        sk.txCount = 0; // Reset rate limit counter on new authorization
+        sk.lastTxTimestamp = 0;
 
         // Clear the old permissions array
         delete sk.permissions;
@@ -97,13 +110,13 @@ contract OqiaSessionKeyManager is Ownable {
             isPermissioned[permissionHash] = true;
         }
 
-        emit SessionKeyAuthorized(safe, sessionKey, validUntil, valueLimit, permissions);
+        emit SessionKeyAuthorized(safe, sessionKey, validUntil, valueLimit, permissions, rateLimitPeriodSeconds, rateLimitTxCount);
     }
 
     /// @notice Allows an authorized session key to execute a transaction from the Safe.
     /// @dev This contract must be an enabled module on the Safe wallet.
     function executeTransaction(address safe, address to, uint256 value, bytes calldata data) external {
-        SessionKey memory sk = sessionKeys[safe];
+        SessionKey storage sk = sessionKeys[safe];
 
         // 1. Check if the caller is the authorized session key
         require(msg.sender == sk.key, "Caller is not the authorized session key");
@@ -114,13 +127,29 @@ contract OqiaSessionKeyManager is Ownable {
         // 3. Check if the transaction value is within the limit
         require(value <= sk.valueLimit, "Transaction value exceeds session key limit");
 
-        // 4. Check for functional permissions
+        // 4. Check Rate Limiting
+        if (sk.rateLimitTxCount > 0) {
+            if (block.timestamp > sk.lastTxTimestamp + sk.rateLimitPeriodSeconds) {
+                // Period has reset
+                sk.txCount = 1;
+            } else {
+                // Within the same period
+                sk.txCount++;
+            }
+
+            if (sk.txCount > sk.rateLimitTxCount) {
+                emit RateLimitExceeded(safe, msg.sender, sk.txCount, sk.rateLimitTxCount);
+                revert("Rate limit exceeded");
+            }
+            sk.lastTxTimestamp = block.timestamp;
+        }
+
+        // 5. Check for functional permissions
         bytes4 selector = bytes4(data[:4]);
         bytes32 permissionHash = keccak256(abi.encodePacked(safe, sk.key, to, selector));
         require(isPermissioned[permissionHash], "Session key does not have permission for this function");
 
-        // 5. Execute the transaction from the Safe via this module
-        // The `execTransactionFromModule` function is a core part of the Safe architecture.
+        // 6. Execute the transaction from the Safe via this module
         bool success = ISafe(safe).execTransactionFromModule(to, value, data, 0); // 0 for CALL operation
         require(success, "Safe transaction failed");
 
