@@ -1,1 +1,1 @@
-# LegacyLedger
+# oqia-protocol

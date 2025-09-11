@@ -9,3 +9,15 @@ logs/
 # Editor
 .vscode/
 .idea/
+node_modules
+.env
+cache
+artifacts
+coverage.json
+typechain-types
+hardhat.config.js.bak
+lib
+out
+cache-forge
+foundry.toml
+remappings.txt
