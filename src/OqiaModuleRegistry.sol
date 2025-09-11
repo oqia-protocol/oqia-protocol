@@ -8,7 +8,14 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
-contract OqiaModuleRegistry is Initializable, ERC721Upgradeable, OwnableUpgradeable, PausableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
+contract OqiaModuleRegistry is
+    Initializable,
+    ERC721Upgradeable,
+    OwnableUpgradeable,
+    PausableUpgradeable,
+    UUPSUpgradeable,
+    ReentrancyGuardUpgradeable
+{
     error ModuleAlreadyRegistered();
     error ModuleNotRegistered();
     error InvalidModuleOwner();
@@ -18,7 +25,9 @@ contract OqiaModuleRegistry is Initializable, ERC721Upgradeable, OwnableUpgradea
     mapping(address => uint256) public moduleIdOfAddress; // module contract address => tokenId
     mapping(uint256 => string) private _moduleURIs; // tokenId => metadata URI
 
-    event ModuleRegistered(uint256 indexed moduleId, address indexed moduleAddress, address indexed owner, string metadataURI);
+    event ModuleRegistered(
+        uint256 indexed moduleId, address indexed moduleAddress, address indexed owner, string metadataURI
+    );
     event ModuleLicenseMinted(uint256 indexed moduleId, address indexed to, uint256 indexed licenseId);
 
     function initialize(string memory name_, string memory symbol_) public initializer {
@@ -31,7 +40,13 @@ contract OqiaModuleRegistry is Initializable, ERC721Upgradeable, OwnableUpgradea
 
     error InvalidModuleAddress();
 
-    function registerModule(address moduleAddress, string calldata metadataURI) external onlyOwner whenNotPaused nonReentrant returns (uint256 moduleId) {
+    function registerModule(address moduleAddress, string calldata metadataURI)
+        external
+        onlyOwner
+        whenNotPaused
+        nonReentrant
+        returns (uint256 moduleId)
+    {
         if (moduleAddress == address(0)) revert InvalidModuleAddress();
         if (moduleIdOfAddress[moduleAddress] != 0) revert ModuleAlreadyRegistered();
 
@@ -56,7 +71,13 @@ contract OqiaModuleRegistry is Initializable, ERC721Upgradeable, OwnableUpgradea
         return _moduleURIs[tokenId];
     }
 
-    function pause() external onlyOwner { _pause(); }
-    function unpause() external onlyOwner { _unpause(); }
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }

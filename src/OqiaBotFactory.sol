@@ -27,12 +27,20 @@ interface ISafe {
     ) external;
 }
 
-contract OqiaBotFactory is Initializable, ERC721Upgradeable, OwnableUpgradeable, PausableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
+contract OqiaBotFactory is
+    Initializable,
+    ERC721Upgradeable,
+    OwnableUpgradeable,
+    PausableUpgradeable,
+    UUPSUpgradeable,
+    ReentrancyGuardUpgradeable
+{
     error InvalidOwner();
     error InvalidMultisigSetup();
     error SaltAlreadyUsed();
     error ProxyCreationFailed();
     error NonexistentToken();
+
     uint256 private _tokenIdCounter;
     address public safeSingleton;
     address public safeProxyFactory;
@@ -41,9 +49,16 @@ contract OqiaBotFactory is Initializable, ERC721Upgradeable, OwnableUpgradeable,
     mapping(address => uint256) public tokenOfWallet;
     mapping(uint256 => string) private _tokenURIs;
     mapping(uint256 => bool) public usedSalts;
+
     event BotCreated(uint256 indexed tokenId, address indexed owner, address wallet, string metadataURI);
 
-    function initialize(string memory name_, string memory symbol_, address _safeSingleton, address _safeProxyFactory, address _entryPoint) public initializer {
+    function initialize(
+        string memory name_,
+        string memory symbol_,
+        address _safeSingleton,
+        address _safeProxyFactory,
+        address _entryPoint
+    ) public initializer {
         __ERC721_init(name_, symbol_);
         __Ownable_init(msg.sender);
         __Pausable_init();
@@ -54,12 +69,29 @@ contract OqiaBotFactory is Initializable, ERC721Upgradeable, OwnableUpgradeable,
         entryPoint = _entryPoint;
     }
 
-    function createBot(address botOwner, address[] calldata owners, uint256 threshold, address fallbackHandler, string calldata metadataURI, uint256 saltNonce) external whenNotPaused nonReentrant returns (address proxy) {
+    function createBot(
+        address botOwner,
+        address[] calldata owners,
+        uint256 threshold,
+        address fallbackHandler,
+        string calldata metadataURI,
+        uint256 saltNonce
+    ) external whenNotPaused nonReentrant returns (address proxy) {
         if (botOwner == address(0)) revert InvalidOwner();
         if (owners.length == 0 || threshold == 0 || threshold > owners.length) revert InvalidMultisigSetup();
         if (usedSalts[saltNonce]) revert SaltAlreadyUsed();
         usedSalts[saltNonce] = true;
-        bytes memory initializer = abi.encodeWithSelector(ISafe.setup.selector, owners, threshold, address(0), bytes(""), fallbackHandler, address(0), 0, payable(address(0)));
+        bytes memory initializer = abi.encodeWithSelector(
+            ISafe.setup.selector,
+            owners,
+            threshold,
+            address(0),
+            bytes(""),
+            fallbackHandler,
+            address(0),
+            0,
+            payable(address(0))
+        );
         proxy = address(SafeProxyFactory(safeProxyFactory).createProxyWithNonce(safeSingleton, initializer, saltNonce));
         if (proxy == address(0)) revert ProxyCreationFailed();
         uint256 tokenId = ++_tokenIdCounter;
@@ -69,15 +101,19 @@ contract OqiaBotFactory is Initializable, ERC721Upgradeable, OwnableUpgradeable,
         _tokenURIs[tokenId] = metadataURI;
         emit BotCreated(tokenId, botOwner, proxy, metadataURI);
     }
-    
+
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         require(_ownerOf(tokenId) != address(0), "ERC721: URI query for nonexistent token");
         return _tokenURIs[tokenId];
     }
-    
-    function pause() external onlyOwner { _pause(); }
-    function unpause() external onlyOwner { _unpause(); }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }
-
-
