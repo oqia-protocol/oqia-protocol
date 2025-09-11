@@ -7,8 +7,8 @@ function sleep(ms) {
 
 async function main() {
   console.log("Starting deployment...");
-  const SAFE_SINGLETON_ADDR = "0xd9db270c1b5e3213241c04185c22d2afd56a333a";
-  const SAFE_PROXY_FACTORY_ADDR = "0xa6b71e26c5e0845f74c812102ca7114b6a896ab2";
+  const SAFE_SINGLETON_ADDR = "0x41675a0494595b422421ff325434152a62627264";
+  const SAFE_PROXY_FACTORY_ADDR = "0x42f84744a4753591238852f51859c28855d02741";
   const ENTRY_POINT_ADDR = "0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789";
 
   const [deployer] = await ethers.getSigners();
