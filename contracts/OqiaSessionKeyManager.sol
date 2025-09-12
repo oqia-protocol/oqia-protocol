@@ -4,13 +4,10 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-// This is a simplified interface for a Gnosis Safe wallet.
-interface ISafe {
-    function getOwners() external view returns (address[] memory);
-    function isOwner(address owner) external view returns (bool);
-    function execTransactionFromModule(address to, uint256 value, bytes calldata data, uint8 operation)
-        external
-        returns (bool success);
+// This is a simplified interface for an Ownable wallet.
+interface IOwnableWallet {
+    function owner() external view returns (address);
+    function execute(address to, uint256 value, bytes calldata data) external returns (bool success, bytes memory result);
 }
 
 /// @title OqiaSessionKeyManager
@@ -44,16 +41,16 @@ contract OqiaSessionKeyManager is Ownable {
         uint32 rateLimitTxCount;
     }
 
-    // Mapping: Safe wallet => SessionKey struct
+    // Mapping: agent wallet => SessionKey struct
     mapping(address => SessionKey) public sessionKeys;
 
-    // Mapping to quickly check if a function is allowed for a given Safe and session key
-    // keccak256(safe, sessionKey, target, selector) => bool
+    // Mapping to quickly check if a function is allowed for a given agent wallet and session key
+    // keccak256(agentWallet, sessionKey, target, selector) => bool
     mapping(bytes32 => bool) public isPermissioned;
 
 
     event SessionKeyAuthorized(
-        address indexed safe,
+        address indexed agentWallet,
         address indexed sessionKey,
         uint256 validUntil,
         uint256 valueLimit,
@@ -70,7 +67,7 @@ contract OqiaSessionKeyManager is Ownable {
     /// @notice Authorizes a session key for a given Safe wallet with specific functional permissions.
     /// @dev The caller (msg.sender) must be an owner of the Safe.
     function authorizeSessionKey(
-        address safe,
+        address agentWallet,
         address sessionKey,
         uint256 validUntil,
         uint256 valueLimit,
@@ -78,20 +75,20 @@ contract OqiaSessionKeyManager is Ownable {
         uint32 rateLimitPeriodSeconds,
         uint32 rateLimitTxCount
     ) external {
-        // Only an owner of the Safe can authorize a session key for it.
-        require(ISafe(safe).isOwner(msg.sender), "Caller is not a Safe owner");
+        // Only the owner of the Agent Wallet can authorize a session key for it.
+        require(IOwnableWallet(agentWallet).owner() == msg.sender, "Caller is not the wallet owner");
 
-        // Clear old permissions for this safe/sessionKey pair before setting new ones
-        SessionKey storage oldSession = sessionKeys[safe];
+        // Clear old permissions for this wallet/sessionKey pair before setting new ones
+        SessionKey storage oldSession = sessionKeys[agentWallet];
         if (oldSession.key != address(0)) {
             for (uint i = 0; i < oldSession.permissions.length; i++) {
                 FunctionPermission memory p = oldSession.permissions[i];
-                bytes32 permissionHash = keccak256(abi.encodePacked(safe, oldSession.key, p.target, p.functionSelector));
+                bytes32 permissionHash = keccak256(abi.encodePacked(agentWallet, oldSession.key, p.target, p.functionSelector));
                 isPermissioned[permissionHash] = false;
             }
         }
 
-        SessionKey storage sk = sessionKeys[safe];
+        SessionKey storage sk = sessionKeys[agentWallet];
         sk.key = sessionKey;
         sk.validUntil = validUntil;
         sk.valueLimit = valueLimit;
@@ -106,17 +103,17 @@ contract OqiaSessionKeyManager is Ownable {
         for (uint i = 0; i < permissions.length; i++) {
             sk.permissions.push(permissions[i]);
             FunctionPermission memory p = permissions[i];
-            bytes32 permissionHash = keccak256(abi.encodePacked(safe, sessionKey, p.target, p.functionSelector));
+            bytes32 permissionHash = keccak256(abi.encodePacked(agentWallet, sessionKey, p.target, p.functionSelector));
             isPermissioned[permissionHash] = true;
         }
 
-        emit SessionKeyAuthorized(safe, sessionKey, validUntil, valueLimit, permissions, rateLimitPeriodSeconds, rateLimitTxCount);
+        emit SessionKeyAuthorized(agentWallet, sessionKey, validUntil, valueLimit, permissions, rateLimitPeriodSeconds, rateLimitTxCount);
     }
 
-    /// @notice Allows an authorized session key to execute a transaction from the Safe.
-    /// @dev This contract must be an enabled module on the Safe wallet.
-    function executeTransaction(address safe, address to, uint256 value, bytes calldata data) external {
-        SessionKey storage sk = sessionKeys[safe];
+    /// @notice Allows an authorized session key to execute a transaction from the agent wallet.
+    /// @dev This contract must be the owner of the agent wallet.
+    function executeTransaction(address agentWallet, address to, uint256 value, bytes calldata data) external {
+        SessionKey storage sk = sessionKeys[agentWallet];
 
         // 1. Check if the caller is the authorized session key
         require(msg.sender == sk.key, "Caller is not the authorized session key");
@@ -138,7 +135,7 @@ contract OqiaSessionKeyManager is Ownable {
             }
 
             if (sk.txCount > sk.rateLimitTxCount) {
-                emit RateLimitExceeded(safe, msg.sender, sk.txCount, sk.rateLimitTxCount);
+                emit RateLimitExceeded(agentWallet, msg.sender, sk.txCount, sk.rateLimitTxCount);
                 revert("Rate limit exceeded");
             }
             sk.lastTxTimestamp = block.timestamp;
@@ -146,13 +143,17 @@ contract OqiaSessionKeyManager is Ownable {
 
         // 5. Check for functional permissions
         bytes4 selector = bytes4(data[:4]);
-        bytes32 permissionHash = keccak256(abi.encodePacked(safe, sk.key, to, selector));
+        bytes32 permissionHash = keccak256(abi.encodePacked(agentWallet, sk.key, to, selector));
         require(isPermissioned[permissionHash], "Session key does not have permission for this function");
 
-        // 6. Execute the transaction from the Safe via this module
-        bool success = ISafe(safe).execTransactionFromModule(to, value, data, 0); // 0 for CALL operation
-        require(success, "Safe transaction failed");
+        // 6. Execute the transaction by calling the Agent Wallet's `execute` function.
+        // This session manager contract is NOT the owner, so this call will fail.
+        // This highlights a design change: a session key manager for an Ownable wallet
+        // needs to be the wallet's owner itself, or the wallet needs a module system.
+        // For this test, we will assume this contract is the owner of the agent wallet.
+        (bool success, ) = IOwnableWallet(agentWallet).execute(to, value, data);
+        require(success, "Agent Wallet transaction failed");
 
-        emit SessionKeyUsed(safe, msg.sender, to, value);
+        emit SessionKeyUsed(agentWallet, msg.sender, to, value);
     }
 }

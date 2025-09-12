@@ -14,7 +14,7 @@ async function main() {
     const OqiaModuleRegistry = await ethers.getContractFactory("OqiaModuleRegistry");
     const registryProxy = await upgrades.deployProxy(
         OqiaModuleRegistry,
-        [ "Oqia Module License", "OML" ],
+        [ "Oqia Module License", "OML", deployer.address ],
         { initializer: "initialize", kind: "uups" }
     );
     await registryProxy.waitForDeployment();
