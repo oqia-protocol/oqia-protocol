@@ -69,6 +69,68 @@ describe("OqiaModuleRegistry", function () {
         });
     });
 
+    describe("Module Blacklisting", function () {
+        let registryProxy, owner, user1;
+        const moduleId = 1;
+
+        beforeEach(async function () {
+            ({ registryProxy, owner, user1 } = await loadFixture(deployRegistryFixture));
+            const moduleAddress = ethers.Wallet.createRandom().address;
+            await registryProxy.connect(owner).registerModule(moduleAddress, owner.address, 0, 0, "");
+        });
+
+        it("Should allow the owner to blacklist a module", async function () {
+            await expect(registryProxy.connect(owner).setModuleBlacklist(moduleId, true))
+                .to.emit(registryProxy, "ModuleBlacklisted")
+                .withArgs(moduleId, true);
+            expect(await registryProxy.moduleBlacklist(moduleId)).to.be.true;
+        });
+
+        it("Should prevent non-owners from blacklisting a module", async function () {
+            await expect(registryProxy.connect(user1).setModuleBlacklist(moduleId, true))
+                .to.be.revertedWithCustomError(registryProxy, "OwnableUnauthorizedAccount");
+        });
+
+        it("Should prevent minting a license for a blacklisted module", async function () {
+            await registryProxy.connect(owner).setModuleBlacklist(moduleId, true);
+            await expect(registryProxy.connect(user1).mintModuleLicense(moduleId, user1.address, { value: 0 }))
+                .to.be.revertedWithCustomError(registryProxy, "ModuleIsBlacklisted");
+        });
+
+        it("Should return false for hasModuleLicense check on a blacklisted module", async function () {
+            // We need a mock factory to test hasModuleLicense
+            const MockFactory = await ethers.getContractFactory("MockOqiaBotFactory");
+            const mockFactory = await MockFactory.deploy();
+            await mockFactory.waitForDeployment();
+            await registryProxy.connect(owner).setBotFactoryAddress(mockFactory.target);
+
+            const botWallet = ethers.Wallet.createRandom().address;
+            await mockFactory.setOwner(user1.address, 1);
+            await mockFactory.setWallet(botWallet, 1);
+
+            await registryProxy.connect(user1).mintModuleLicense(moduleId, user1.address, { value: 0 });
+            expect(await registryProxy.hasModuleLicense(botWallet, moduleId)).to.be.true;
+
+            await registryProxy.connect(owner).setModuleBlacklist(moduleId, true);
+            expect(await registryProxy.hasModuleLicense(botWallet, moduleId)).to.be.false;
+        });
+
+        it("Should revert when calling tokenURI for a license of a blacklisted module", async function () {
+            await registryProxy.connect(user1).mintModuleLicense(moduleId, user1.address, { value: 0 });
+            await registryProxy.connect(owner).setModuleBlacklist(moduleId, true);
+            const licenseId = 1;
+            await expect(registryProxy.tokenURI(licenseId)).to.be.revertedWithCustomError(registryProxy, "ModuleIsBlacklisted");
+        });
+
+        it("Should revert when calling royaltyInfo for a license of a blacklisted module", async function () {
+            await registryProxy.connect(user1).mintModuleLicense(moduleId, user1.address, { value: 0 });
+            await registryProxy.connect(owner).setModuleBlacklist(moduleId, true);
+            const licenseId = 1;
+            const salePrice = ethers.parseEther("1.0");
+            await expect(registryProxy.royaltyInfo(licenseId, salePrice)).to.be.revertedWithCustomError(registryProxy, "ModuleIsBlacklisted");
+        });
+    });
+
     describe("Module License Minting and Economics", function () {
         let registryProxy, developer, user1, user2, protocolTreasury;
         const moduleAddress = "0x1234567890123456789012345678901234567890";
@@ -113,11 +175,9 @@ describe("OqiaModuleRegistry", function () {
         });
 
         it("Should allow minting multiple licenses for the same module", async function () {
-            // User 1 mints license 1
             await registryProxy.connect(user1).mintModuleLicense(moduleId, user1.address, { value: price });
             expect(await registryProxy.ownerOf(1)).to.equal(user1.address);
 
-            // User 2 mints license 2
             await registryProxy.connect(user2).mintModuleLicense(moduleId, user2.address, { value: price });
             expect(await registryProxy.ownerOf(2)).to.equal(user2.address);
 

@@ -3,33 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OQIA Protocol - Bot Minter</title>
+    <title>Oqia Protocol</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>OQIA Protocol</h1>
-            <p>Your On-chain AI Agent</p>
-        </header>
-        <main>
-            <section id="connection-section">
-                <button id="connect-wallet-btn">Connect Wallet</button>
-                <p id="wallet-status">Status: Not Connected</p>
-            </section>
-            <section id="minting-section" class="hidden">
-                <h2>Mint Your AI Bot</h2>
-                <button id="mint-bot-btn">Mint Bot</button>
-                <div id="mint-status"></div>
-            </section>
-            <section id="bot-status-section" class="hidden">
-                <h2>Your Bot</h2>
-                <p><strong>Token ID:</strong> <span id="bot-token-id"></span></p>
-                <p><strong>Wallet Address:</strong> <span id="bot-wallet-address"></span></p>
-                <p><strong>Status:</strong> <span id="bot-status">Idle</span></p>
-            </section>
-        </main>
+    <h1>Oqia Protocol</h1>
+
+    <div id="wallet-info">
+        <p><strong>Status:</strong> <span id="wallet-status">Not Connected</span></p>
+        <p><strong>Address:</strong> <span id="wallet-address">N/A</span></p>
+        <button id="connect-wallet-btn">Connect Wallet</button>
     </div>
+
+    <div id="mint-agent">
+        <h2>Mint New Agent</h2>
+        <button id="mint-agent-btn">Mint Agent NFT</button>
+    </div>
+
+    <div id="session-keys">
+        <h2>Session Keys</h2>
+        <div id="grant-session-key">
+            <h3>Grant Session Key</h3>
+            <input type="text" id="session-key-address" placeholder="Session Key Address">
+            <input type="text" id="session-key-function" placeholder="Function Selector (e.g., 0x12345678)">
+            <input type="number" id="session-key-valid-until" placeholder="Valid Until (Timestamp)">
+            <input type="number" id="session-key-allowance" placeholder="Value Allowance (Wei)">
+            <button id="grant-session-key-btn">Grant Key</button>
+        </div>
+    </div>
+
     <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
     <script src="app.js"></script>
 </body>

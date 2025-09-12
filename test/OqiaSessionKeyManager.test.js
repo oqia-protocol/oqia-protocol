@@ -1,82 +1,176 @@
 const { expect } = require("chai");
 const { ethers, upgrades } = require("hardhat");
+const { setBalance, time } = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("OqiaSessionKeyManager", function () {
-    let factory, sessionKeyManager, agentWallet, owner, other;
-    let agentWalletImplementation; // To deploy clones from
+    let factory, sessionKeyManager, agentWallet, owner, other, sessionKey;
+    let agentWalletImplementation, agentWalletAddress;
+
+    const ANY_FUNCTION = "0x00000000";
 
     beforeEach(async function () {
         [owner, other] = await ethers.getSigners();
+        sessionKey = ethers.Wallet.createRandom().connect(ethers.provider);
 
-        // deploy factory (ERC721)
-        const Factory = await ethers.getContractFactory("OqiaBotFactory");
+        await setBalance(sessionKey.address, ethers.parseEther("1.0"));
+
         const OqiaAgentWallet = await ethers.getContractFactory("OqiaAgentWallet");
         agentWalletImplementation = await OqiaAgentWallet.deploy();
         await agentWalletImplementation.waitForDeployment();
+
+        const Factory = await ethers.getContractFactory("OqiaBotFactory");
         factory = await upgrades.deployProxy(Factory, [agentWalletImplementation.target]);
         await factory.waitForDeployment();
 
-    // deploy session manager (no constructor args)
-    const S = await ethers.getContractFactory("OqiaSessionKeyManager");
-    sessionKeyManager = await S.deploy();
+        const SessionKeyManager = await ethers.getContractFactory("OqiaSessionKeyManager");
+        sessionKeyManager = await SessionKeyManager.deploy();
         await sessionKeyManager.waitForDeployment();
-    });
 
-    it("accepts setupSessionKey when caller is the NFT owner (factory.ownerOf)", async function () {
-        // mint an agent NFT to 'owner' using factory
         const tx = await factory.createBot(owner.address);
         const receipt = await tx.wait();
         const event = receipt.logs.find(e => factory.interface.parseLog(e)?.name === "BotCreated");
-        const tokenId = event.args.tokenId;
-        const walletAddress = event.args.wallet;
-
-        // confirm ownerOf
-        const nftOwner = await factory.ownerOf(tokenId);
-        expect(nftOwner).to.equal(owner.address);
-
-        const agentWalletInstance = await ethers.getContractAt("OqiaAgentWallet", walletAddress);
-        const nativeOwner = await agentWalletInstance.owner();
-        expect(nativeOwner).to.equal(owner.address);
-
-        // The user's patch had a function called setupSessionKey, my contract uses authorizeSessionKey
-        // I will adapt the test to use my function name and arguments.
-        const sessionKey = ethers.Wallet.createRandom();
-        const validUntil = Math.floor(Date.now() / 1000) + 3600;
-        const permissions = [];
-
-        // call authorizeSessionKey as owner (should pass fallback factory check)
-        // Authorize using the current contract signature: (safe, sessionKey, validUntil, valueLimit)
-        await expect(
-            sessionKeyManager.connect(owner).authorizeSessionKey(
-                walletAddress,
-                sessionKey.address,
-                validUntil,
-                0
-            )
-        ).to.not.be.reverted;
+        agentWalletAddress = event.args.wallet;
+        agentWallet = await ethers.getContractAt("OqiaAgentWallet", agentWalletAddress);
     });
 
-    it("accepts setupSessionKey when caller is the native wallet owner", async function () {
-    // This test ensures the primary check works.
-    // We will mint a bot to `other`, so `other` is the native owner.
-        const tx = await factory.createBot(other.address);
-        const receipt = await tx.wait();
-        const event = receipt.logs.find(e => factory.interface.parseLog(e)?.name === "BotCreated");
-        const tokenId = event.args.tokenId;
-        const walletAddress = event.args.wallet;
+    describe("Authorization & Revocation", function () {
+        it("should allow the safe owner to authorize a session key", async function () {
+            const validUntil = (await time.latest()) + 3600;
+            const valueAllowance = ethers.parseEther("0.1");
 
-        const sessionKey = ethers.Wallet.createRandom();
-        const validUntil = Math.floor(Date.now() / 1000) + 3600;
-        const permissions = [];
+            await expect(
+                sessionKeyManager.connect(owner).authorizeSessionKey(
+                    agentWallet.target,
+                    sessionKey.address,
+                    ANY_FUNCTION,
+                    validUntil,
+                    valueAllowance
+                )
+            ).to.emit(sessionKeyManager, "SessionKeyAuthorized");
 
-        // Call authorizeSessionKey as `other` (the native owner)
-        await expect(
-            sessionKeyManager.connect(other).authorizeSessionKey(
-                walletAddress,
+            const sk = await sessionKeyManager.sessionKeys(agentWallet.target, sessionKey.address);
+            expect(sk.authorized).to.be.true;
+        });
+
+        it("should prevent a non-owner from authorizing a session key", async function () {
+            const validUntil = (await time.latest()) + 3600;
+            await expect(
+                sessionKeyManager.connect(other).authorizeSessionKey(
+                    agentWallet.target,
+                    sessionKey.address,
+                    ANY_FUNCTION,
+                    validUntil,
+                    ethers.parseEther("0.1")
+                )
+            ).to.be.revertedWith("Caller is not the owner of the safe");
+        });
+
+        it("should allow the safe owner to revoke a session key", async function () {
+            const validUntil = (await time.latest()) + 3600;
+            await sessionKeyManager.connect(owner).authorizeSessionKey(agentWallet.target, sessionKey.address, ANY_FUNCTION, validUntil, 0);
+
+            await expect(
+                sessionKeyManager.connect(owner).revokeSessionKey(agentWallet.target, sessionKey.address)
+            ).to.emit(sessionKeyManager, "SessionKeyRevoked");
+
+            const sk = await sessionKeyManager.sessionKeys(agentWallet.target, sessionKey.address);
+            expect(sk.authorized).to.be.false;
+        });
+
+        it("should prevent a non-owner from revoking a session key", async function () {
+            const validUntil = (await time.latest()) + 3600;
+            await sessionKeyManager.connect(owner).authorizeSessionKey(agentWallet.target, sessionKey.address, ANY_FUNCTION, validUntil, 0);
+
+            await expect(
+                sessionKeyManager.connect(other).revokeSessionKey(agentWallet.target, sessionKey.address)
+            ).to.be.revertedWith("Caller is not the owner of the safe");
+        });
+    });
+
+    describe("Transaction Execution", function () {
+        beforeEach(async function () {
+            const validUntil = (await time.latest()) + 3600;
+            const valueAllowance = ethers.parseEther("1.0");
+            await sessionKeyManager.connect(owner).authorizeSessionKey(
+                agentWallet.target,
                 sessionKey.address,
+                ANY_FUNCTION,
+                validUntil,
+                valueAllowance
+            );
+            await setBalance(agentWallet.target, ethers.parseEther("2.0"));
+        });
+
+        it("should FAIL to execute a transaction if SessionKeyManager is not an authorized module", async function () {
+            await expect(
+                sessionKeyManager.connect(sessionKey).executeTransaction(agentWallet.target, other.address, ethers.parseEther("0.5"), "0x")
+            ).to.be.revertedWith("Not Owner or Authorized Module");
+        });
+
+        it("should SUCCEED in executing a transaction after SessionKeyManager is authorized", async function () {
+            await agentWallet.connect(owner).authorizeModule(sessionKeyManager.target, true);
+            const value = ethers.parseEther("0.5");
+            const otherBalanceBefore = await ethers.provider.getBalance(other.address);
+
+            await expect(
+                sessionKeyManager.connect(sessionKey).executeTransaction(agentWallet.target, other.address, value, "0x")
+            ).to.emit(sessionKeyManager, "SessionKeyUsed");
+
+            const otherBalanceAfter = await ethers.provider.getBalance(other.address);
+            expect(otherBalanceAfter).to.equal(otherBalanceBefore + value);
+        });
+
+        it("should FAIL to execute if session key is expired", async function () {
+            const shortLivedSk = ethers.Wallet.createRandom().connect(ethers.provider);
+            await setBalance(shortLivedSk.address, ethers.parseEther("1.0"));
+            await agentWallet.connect(owner).authorizeModule(sessionKeyManager.target, true);
+        
+            const validUntil = (await time.latest()) + 100; // Valid for 100 seconds
+            await sessionKeyManager.connect(owner).authorizeSessionKey(agentWallet.target, shortLivedSk.address, ANY_FUNCTION, validUntil, 0);
+        
+            await time.increase(101); // Increase time to expire the key
+        
+            await expect(
+                sessionKeyManager.connect(shortLivedSk).executeTransaction(agentWallet.target, other.address, 0, "0x")
+            ).to.be.revertedWith("Session key has expired");
+        });
+
+        it("should FAIL to execute if value exceeds allowance", async function () {
+            await agentWallet.connect(owner).authorizeModule(sessionKeyManager.target, true);
+            const value = ethers.parseEther("1.1");
+
+            await expect(
+                sessionKeyManager.connect(sessionKey).executeTransaction(agentWallet.target, other.address, value, "0x")
+            ).to.be.revertedWith("Transaction value exceeds allowance");
+        });
+
+        it("should FAIL if the function selector does not match", async function () {
+            const specificFuncSk = ethers.Wallet.createRandom().connect(ethers.provider);
+            await setBalance(specificFuncSk.address, ethers.parseEther("1.0"));
+
+            const functionSelector = agentWallet.interface.getFunction("authorizeModule").selector;
+            const validUntil = (await time.latest()) + 3600;
+            await sessionKeyManager.connect(owner).authorizeSessionKey(
+                agentWallet.target,
+                specificFuncSk.address,
+                functionSelector,
                 validUntil,
                 0
-            )
-        ).to.not.be.reverted;
+            );
+            await agentWallet.connect(owner).authorizeModule(sessionKeyManager.target, true);
+
+            await expect(
+                sessionKeyManager.connect(specificFuncSk).executeTransaction(agentWallet.target, other.address, 0, "0x12345678")
+            ).to.be.revertedWith("Transaction data does not match authorized function");
+        });
+
+        it("should FAIL after the session key has been revoked", async function () {
+            await agentWallet.connect(owner).authorizeModule(sessionKeyManager.target, true);
+            await sessionKeyManager.connect(owner).revokeSessionKey(agentWallet.target, sessionKey.address);
+
+            await expect(
+                sessionKeyManager.connect(sessionKey).executeTransaction(agentWallet.target, other.address, 0, "0x")
+            ).to.be.revertedWith("Session key not authorized");
+        });
     });
 });
