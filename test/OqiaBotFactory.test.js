@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { upgrades } = require("hardhat");
+const { ethers, upgrades } = require("hardhat");
 
 describe("OqiaBotFactory (Refactored)", function () {
     let OqiaBotFactory, OqiaAgentWallet, factoryProxy, agentWalletImplementation, owner;
@@ -37,7 +37,7 @@ describe("OqiaBotFactory (Refactored)", function () {
         const receipt = await tx.wait();
 
         // Find the event in the transaction receipt
-        const event = receipt.logs.find(e => e.eventName === 'BotCreated');
+        const event = receipt.logs.find(e => e.eventName === "BotCreated");
         expect(event).to.not.be.undefined;
 
         const tokenId = event.args.tokenId;

@@ -7,6 +7,12 @@ const path = require("path");
 const chalk = require("chalk");
 require("dotenv").config();
 
+// Safety: Respect SKIP_DEPLOY so checks don't accidentally interact with live networks
+if (process.env.SKIP_DEPLOY) {
+    console.log("SKIP_DEPLOY is set — aborting mint-bot script.");
+    process.exit(0);
+}
+
 // --- CONFIGURATION LOADER ---
 function loadConfig() {
     const { DEPLOYER_PRIVATE_KEY } = process.env;
@@ -62,7 +68,7 @@ async function main() {
 
     const botCreatedEvent = receipt.logs.map(log => {
         try { return factory.interface.parseLog(log); } catch { return null; }
-    }).find(event => event?.name === 'BotCreated');
+    }).find(event => event?.name === "BotCreated");
 
     if (!botCreatedEvent) {
         throw new Error("BotCreated event not found in transaction receipt.");
@@ -78,7 +84,7 @@ async function main() {
         botAddress: newBotAddress,
         botTokenId: newBotTokenId.toString(),
     };
-    const configPath = path.resolve(__dirname, 'bot-config.json');
+    const configPath = path.resolve(__dirname, "bot-config.json");
     fs.writeFileSync(configPath, JSON.stringify(configData, null, 2));
     console.log(`- Configuration saved to: ${chalk.gray(configPath)}`);
 }

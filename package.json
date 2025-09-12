@@ -4,7 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "npx hardhat test"
+    "compile": "npx hardhat compile",
+    "clean": "npx hardhat clean",
+    "lint": "npx eslint .",
+    "test": "npx hardhat test",
+    "check": "SKIP_DEPLOY=1 ./scripts/check.sh",
+    "start-frontend": "npx http-server frontend -p 8080",
+    "format": "prettier --write \"**/*.{js,ts,json,sol,md}\""
   },
   "keywords": [],
   "author": "",

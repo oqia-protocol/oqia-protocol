@@ -6,6 +6,13 @@ const { ethers, upgrades, run } = require("hardhat");
 const fs = require("fs");
 const path = require("path");
 const chalk = require("chalk");
+require("dotenv").config();
+
+// SAFETY: set SKIP_DEPLOY=1 to avoid running deployments in CI/local checks
+if (process.env.SKIP_DEPLOY) {
+    console.log("SKIP_DEPLOY is set — aborting deployment script.");
+    process.exit(0);
+}
 
 // Helper to write data to a temporary file
 function writeToTmpFile(filename, content) {

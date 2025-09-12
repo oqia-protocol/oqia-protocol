@@ -1,6 +1,12 @@
 const { ethers, upgrades } = require("hardhat");
 const chalk = require("chalk");
 
+// SAFETY: set SKIP_DEPLOY=1 to avoid running deployments in CI/local checks
+if (process.env.SKIP_DEPLOY) {
+    console.log("SKIP_DEPLOY is set — aborting deployment script.");
+    process.exit(0);
+}
+
 async function main() {
     console.log(chalk.blue.bold("🚀 Deploying All Oqia Protocol Contracts..."));
     const [deployer] = await ethers.getSigners();

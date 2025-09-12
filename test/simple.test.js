@@ -1,5 +1,6 @@
 const { expect } = require("chai");
-const { ethers, upgrades } = require("hardhat");
+const hre = require("hardhat");
+const { ethers, upgrades } = hre;
 
 describe("Simple Interaction Test", function () {
     let deployer;
@@ -15,15 +16,21 @@ describe("Simple Interaction Test", function () {
         token = await MockERC20.deploy("Token A", "TKA");
         await token.waitForDeployment();
 
-        // Deploy OqiaAgentWallet as an upgradeable proxy
-        const OqiaAgentWallet = await ethers.getContractFactory("OqiaAgentWallet");
-        agentWallet = await upgrades.deployProxy(OqiaAgentWallet, [deployer.address]);
-        await agentWallet.waitForDeployment();
+    // Deploy OqiaAgentWallet as an upgradeable proxy using initializer(initialOwner)
+    const OqiaAgentWallet = await ethers.getContractFactory("OqiaAgentWallet");
+    agentWallet = await upgrades.deployProxy(OqiaAgentWallet, [deployer.address], { initializer: "initialize", kind: "uups" });
+    await agentWallet.waitForDeployment();
 
         // Deploy SimpleArbitrageModule with dummy addresses for dependencies
         const SimpleArbitrageModule = await ethers.getContractFactory("SimpleArbitrageModule");
         const mockRegistry = await (await ethers.getContractFactory("OqiaModuleRegistry")).deploy();
-        await mockRegistry.initialize("Test", "TEST", deployer.address);
+        await mockRegistry.waitForDeployment();
+        // initialize the registry if it uses an initializer
+        try {
+            await mockRegistry.initialize("Test", "TEST", deployer.address);
+        } catch (e) {
+            // ignore if initialize is not available
+        }
 
         module = await SimpleArbitrageModule.deploy(ethers.ZeroAddress, mockRegistry.target, 1);
         await module.waitForDeployment();

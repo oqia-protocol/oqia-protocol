@@ -2,6 +2,13 @@ const { ethers, upgrades } = require("hardhat");
 const fs = require("fs");
 const path = require("path");
 const chalk = require("chalk");
+require("dotenv").config();
+
+// SAFETY: set SKIP_DEPLOY=1 to avoid running deployments in CI/local checks
+if (process.env.SKIP_DEPLOY) {
+    console.log("SKIP_DEPLOY is set — aborting deployment script.");
+    process.exit(0);
+}
 
 async function main() {
     console.log(chalk.blue.bold("🚀 Starting End-to-End Deployment for Autonomous Agent Test..."));

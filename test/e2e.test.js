@@ -1,5 +1,6 @@
 const { expect } = require("chai");
-const { ethers, upgrades } = require("hardhat");
+const hre = require("hardhat");
+const { ethers, upgrades } = hre;
 
 describe("End-to-End Test: Autonomous Agent Execution", function () {
     let deployer, other;
@@ -45,8 +46,8 @@ describe("End-to-End Test: Autonomous Agent Execution", function () {
         await tokenB.waitForDeployment();
         deployments.MockERC20B = tokenB.target;
 
-        const OqiaSessionKeyManager = await ethers.getContractFactory("OqiaSessionKeyManager");
-        const sessionManager = await OqiaSessionKeyManager.deploy(deployments.OqiaBotFactory);
+    const OqiaSessionKeyManager = await ethers.getContractFactory("OqiaSessionKeyManager");
+    const sessionManager = await OqiaSessionKeyManager.deploy();
         await sessionManager.waitForDeployment();
         deployments.OqiaSessionKeyManager = sessionManager.target;
     });
@@ -90,11 +91,9 @@ describe("End-to-End Test: Autonomous Agent Execution", function () {
         const sessionKey = ethers.Wallet.createRandom();
         const sessionManager = await ethers.getContractAt("OqiaSessionKeyManager", deployments.OqiaSessionKeyManager);
         const moduleInterface = new ethers.Interface((await hre.artifacts.readArtifact("SimpleArbitrageModule")).abi);
-        const permissions = [{
-            target: deployments.SimpleArbitrageModule,
-            functionSelector: moduleInterface.getFunction("executeArbitrage").selector,
-        }];
-        await sessionManager.connect(deployer).authorizeSessionKey(botAddress, tokenId, sessionKey.address, Math.floor(Date.now() / 1000) + 3600, ethers.parseEther("100"), permissions, 0, 0);
+        // The deployed SessionKeyManager uses authorizeSessionKey(safe, sessionKey, validUntil, valueLimit)
+        const validUntil = Math.floor(Date.now() / 1000) + 3600;
+        await sessionManager.connect(deployer).authorizeSessionKey(botAddress, sessionKey.address, validUntil, ethers.parseEther("100"));
 
         // 6. Approve the module from the agent wallet
         await agentWallet.connect(deployer).approveModule(deployments.MockERC20A, deployments.SimpleArbitrageModule, ethers.MaxUint256);
@@ -117,7 +116,7 @@ describe("End-to-End Test: Autonomous Agent Execution", function () {
         const finalReceipt = await txAutonomous.wait();
 
         // 10. Assertions
-        expect(finalReceipt.hash).to.be.a('string');
+        expect(finalReceipt.hash).to.be.a("string");
         expect(finalReceipt.status).to.equal(1);
 
         console.log(`\n✅ E2E TEST PASSED! Autonomous transaction hash: ${finalReceipt.hash}`);

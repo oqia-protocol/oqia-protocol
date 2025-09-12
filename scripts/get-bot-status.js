@@ -28,14 +28,14 @@ function loadConfig() {
     const FACTORY_ADDRESS = fs.readFileSync(factoryAddressPath, "utf8").trim();
 
     const factoryArtifactPath = path.resolve(__dirname, "../artifacts/contracts/OqiaBotFactory.sol/OqiaBotFactory.json");
-     if (!fs.existsSync(factoryArtifactPath)) {
+    if (!fs.existsSync(factoryArtifactPath)) {
         console.error(chalk.red(`Error: ABI file not found at ${factoryArtifactPath}`));
         console.error(chalk.yellow("Please compile your contracts by running 'npx hardhat compile' first."));
         process.exit(1);
     }
     const FACTORY_ABI = JSON.parse(fs.readFileSync(factoryArtifactPath, "utf8")).abi;
 
-    const botConfigPath = path.resolve(__dirname, 'bot-config.json');
+    const botConfigPath = path.resolve(__dirname, "bot-config.json");
     if (!fs.existsSync(botConfigPath)) {
         console.error(chalk.red(`Error: Bot configuration file not found at ${botConfigPath}`));
         console.error(chalk.yellow("Please mint a bot first by running 'node scripts/mint-bot.js'."));

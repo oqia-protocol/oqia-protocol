@@ -1,6 +1,13 @@
 // scripts/debugSessionTx.js
 const hre = require("hardhat");
 const { ethers } = hre;
+require("dotenv").config();
+
+// Respect SKIP_DEPLOY for safety when running checks
+if (process.env.SKIP_DEPLOY) {
+    console.log("SKIP_DEPLOY is set — aborting debugSessionTx script.");
+    process.exit(0);
+}
 
 async function debugSessionKeyCall() {
     console.log("=== Oqia Debug Script with Impersonation ===\n");

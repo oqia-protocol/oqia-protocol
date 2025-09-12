@@ -35,13 +35,13 @@ class OqiaAgent {
         if (this.agentWalletAddress === ethers.ZeroAddress) throw new Error("Agent not found.");
         console.log(`🤖 Agent Wallet Found: ${this.agentWalletAddress}`);
 
-        console.log(`\n💰 Funding Agent Wallet with 0.1 ETH...`);
+        console.log("\n💰 Funding Agent Wallet with 0.1 ETH...");
         const tx = await this.owner.sendTransaction({
             to: this.agentWalletAddress,
             value: ethers.parseEther("0.1")
         });
         await tx.wait();
-        console.log(`   ✅ Wallet funded.`);
+        console.log("   ✅ Wallet funded.");
 
         this.agentWallet = new ethers.Contract(this.agentWalletAddress, AGENT_WALLET_ABI, this.owner);
         this.sessionManager = new ethers.Contract(SESSION_KEY_MANAGER_ADDRESS, SESSION_KEY_MANAGER_ABI, this.owner);
@@ -52,7 +52,7 @@ class OqiaAgent {
     async setupPermissions() {
         console.log("\n⚙️  Setting up on-chain permissions...");
 
-        let nonce = await this.provider.getTransactionCount(this.owner.address, 'latest');
+        let nonce = await this.provider.getTransactionCount(this.owner.address, "latest");
 
         // Step 1: Owner authorizes the Session Key Manager as a module on the Agent Wallet
         console.log("   1. Authorizing Session Manager as a module...");
