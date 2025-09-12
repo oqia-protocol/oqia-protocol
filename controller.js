@@ -1,149 +1,113 @@
-// Oqia Protocol - Off-Chain AI Controller (v3.0 - Oqia-Native Wallet)
+// Oqia Protocol - Off-Chain AI Controller (v3.0 - Definitive)
+// This version implements the correct "authorize module" flow.
 
 const { ethers } = require("ethers");
-const fs = require("fs");
-const path = require("path");
-const chalk = require("chalk");
 require("dotenv").config();
 
-// --- CONFIGURATION LOADER ---
-function loadConfig() {
-    const { ALCHEMY_SEPOLIA_RPC_URL, DEPLOYER_PRIVATE_KEY } = process.env;
+// --- CONFIGURATION ---
+const FACTORY_ADDRESS = process.env.FACTORY_ADDRESS;
+const SESSION_KEY_MANAGER_ADDRESS = process.env.SESSION_KEY_MANAGER_ADDRESS;
+const ALCHEMY_RPC_URL = process.env.ALCHEMY_SEPOLIA_RPC_URL;
+const OWNER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY;
 
-    if (!ALCHEMY_SEPOLIA_RPC_URL || !DEPLOYER_PRIVATE_KEY) {
-        throw new Error("Missing required environment variables in .env file.");
-    }
+// --- ABIs ---
+const FACTORY_ABI = ["function botWalletOf(uint256 tokenId) view returns (address)"];
+const AGENT_WALLET_ABI = ["function authorizeModule(address module, bool isAuthorized)"];
+const SESSION_KEY_MANAGER_ABI = [
+    "function authorizeSessionKey(address safe, address sessionKey, uint256 validUntil, uint256 valueLimit)",
+    "function executeTransaction(address safe, address to, uint256 value, bytes calldata data)"
+];
 
-    const botConfigPath = path.resolve(__dirname, "./scripts/bot-config.json");
-    if (!fs.existsSync(botConfigPath)) {
-        throw new Error("bot-config.json not found. Please run the mint-bot.js script first.");
-    }
-    const botConfig = JSON.parse(fs.readFileSync(botConfigPath, "utf8"));
-
-    // The new architecture doesn't require the registry or session manager for the controller.
-    // However, we do need addresses for the modules the agent will call.
-    // This is hardcoded for now, but should be discovered dynamically in a real agent.
-    const simpleArbitrageModuleAddress = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707";
-
-    const agentWalletArtifactPath = path.resolve(__dirname, "./artifacts/contracts/OqiaAgentWallet.sol/OqiaAgentWallet.json");
-    const simpleArbitrageModuleArtifactPath = path.resolve(__dirname, "./artifacts/contracts/SimpleArbitrageModule.sol/SimpleArbitrageModule.json");
-
-    for (const p of [agentWalletArtifactPath, simpleArbitrageModuleArtifactPath]) {
-        if (!fs.existsSync(p)) {
-            throw new Error(`ABI file not found at ${p}. Please compile contracts with 'npx hardhat compile'.`);
-        }
-    }
-
-    const AGENT_WALLET_ABI = JSON.parse(fs.readFileSync(agentWalletArtifactPath, "utf8")).abi;
-    const SIMPLE_ARBITRAGE_MODULE_ABI = JSON.parse(fs.readFileSync(simpleArbitrageModuleArtifactPath, "utf8")).abi;
-
-    return {
-        rpcUrl: ALCHEMY_SEPOLIA_RPC_URL,
-        ownerPrivateKey: DEPLOYER_PRIVATE_KEY,
-        botWalletAddress: botConfig.botAddress,
-        agentWalletAbi: AGENT_WALLET_ABI,
-        simpleArbitrageModuleAbi: SIMPLE_ARBITRAGE_MODULE_ABI,
-        simpleArbitrageModuleAddress: simpleArbitrageModuleAddress,
-    };
-}
-
-// --- CORE AGENT LOGIC ---
+// --- LOGIC ---
 class OqiaAgent {
-    constructor(config) {
-        this.config = config;
-        this.provider = new ethers.JsonRpcProvider(config.rpcUrl);
-        this.owner = new ethers.Wallet(config.ownerPrivateKey, this.provider);
-
-        console.log(chalk.cyan("🤖 Agent Initializing..."));
-        console.log(`   - ${chalk.cyan("Owner:")}          ${this.owner.address}`);
-        console.log(`   - ${chalk.cyan("Bot Wallet:")}     ${config.botWalletAddress}`);
+    constructor(nftId, owner) {
+        this.nftId = nftId;
+        this.owner = owner;
+        this.provider = owner.provider;
+        this.sessionKey = ethers.Wallet.createRandom();
+        console.log(`🔑 New Session Key: ${this.sessionKey.address}`);
     }
 
-    sleep(ms) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
+    async initialize() {
+        console.log(`\n🔎 Finding Agent Wallet for NFT #${this.nftId}...`);
+        const factory = new ethers.Contract(FACTORY_ADDRESS, FACTORY_ABI, this.owner);
+        this.agentWalletAddress = await factory.botWalletOf(this.nftId);
+        if (this.agentWalletAddress === ethers.ZeroAddress) throw new Error("Agent not found.");
+        console.log(`🤖 Agent Wallet Found: ${this.agentWalletAddress}`);
+
+        console.log(`\n💰 Funding Agent Wallet with 0.1 ETH...`);
+        const tx = await this.owner.sendTransaction({
+            to: this.agentWalletAddress,
+            value: ethers.parseEther("0.1")
+        });
+        await tx.wait();
+        console.log(`   ✅ Wallet funded.`);
+
+        this.agentWallet = new ethers.Contract(this.agentWalletAddress, AGENT_WALLET_ABI, this.owner);
+        this.sessionManager = new ethers.Contract(SESSION_KEY_MANAGER_ADDRESS, SESSION_KEY_MANAGER_ABI, this.owner);
+
+        await this.setupPermissions();
     }
 
-    async runDecisionLoop() {
-        console.log(chalk.yellow("\n💡 Starting decision loop... Monitoring for opportunities."));
-        // This loop will only run once for the test, then exit.
-        for (let i = 0; i < 1; i++) {
-            try {
-                console.log(chalk.gray(`[${new Date().toISOString()}] Monitoring prices...`));
-                const marketData = {};
+    async setupPermissions() {
+        console.log("\n⚙️  Setting up on-chain permissions...");
 
-                const opportunity = this.analyzeOpportunities(marketData);
-                if (opportunity) {
-                    await this.executeTrade(opportunity);
-                }
+        let nonce = await this.provider.getTransactionCount(this.owner.address, 'latest');
 
-            } catch (error) {
-                console.error(chalk.red("   - 🔥 Error in decision loop:"), error.message);
-            }
-            await this.sleep(2000);
-        }
+        // Step 1: Owner authorizes the Session Key Manager as a module on the Agent Wallet
+        console.log("   1. Authorizing Session Manager as a module...");
+        const authTx = await this.agentWallet.authorizeModule(SESSION_KEY_MANAGER_ADDRESS, true, { nonce: nonce++ });
+        await authTx.wait();
+        console.log("      ✅ Module authorized.");
+
+        // Step 2: Owner tells the Session Key Manager to create a session key
+        console.log("   2. Authorizing temporary session key...");
+        const validUntil = Math.floor(Date.now() / 1000) + 3600; // 1 hour
+        const valueLimit = ethers.parseEther("0.001");
+        const keyTx = await this.sessionManager.authorizeSessionKey(this.agentWalletAddress, this.sessionKey.address, validUntil, valueLimit, { nonce: nonce++ });
+        await keyTx.wait();
+        console.log("      ✅ Session key authorized.");
+
+        // Step 3: Owner sends gas money to the session key
+        console.log("   3. Funding session key for gas...");
+        const fundTx = await this.owner.sendTransaction({
+            to: this.sessionKey.address,
+            value: ethers.parseEther("0.1"), // Send ETH for gas
+            nonce: nonce++
+        });
+        await fundTx.wait();
+        console.log("      ✅ Session key funded.");
     }
 
-    analyzeOpportunities(marketData) {
-        // Placeholder logic
-        if (marketData) {}
-        return {
-            tokenA: ethers.getAddress("0x7b79995e5f793a07bc00c21412e50ea03298c081"), // Dummy addresses
-            tokenB: ethers.getAddress("0x6b175474e89094c44da98b954eedeac495271d0f"),
-            amountIn: ethers.parseEther("0.001"),
-        };
-    }
+    async executeAutonomousTransaction() {
+        console.log("\n🚀 Executing autonomous transaction via session key...");
+        const managerWithSessionKey = this.sessionManager.connect(this.sessionKey.connect(this.provider));
 
-    async executeTrade(opportunity) {
-        console.log(chalk.yellow("\n🚀 Executing trade via OqiaAgentWallet..."));
-
-        // The owner directly calls the agent wallet
-        const agentWallet = new ethers.Contract(this.config.botWalletAddress, this.config.agentWalletAbi, this.owner);
-        const moduleInterface = new ethers.Interface(this.config.simpleArbitrageModuleAbi);
-
-        // Encode the call to the SimpleArbitrageModule
-        const callData = moduleInterface.encodeFunctionData("executeArbitrage", [
-            this.config.botWalletAddress, // The module needs to know the safe address
-            opportunity.tokenA,
-            opportunity.tokenB,
-            opportunity.amountIn,
-        ]);
+        const targetAddress = this.owner.address; // For demo, we send ETH to the owner
+        const value = ethers.parseEther("0.0001");
 
         try {
-            // The owner calls the `execute` function on the agent wallet
-            const tx = await agentWallet.execute(
-                this.config.simpleArbitrageModuleAddress,
-                0, // value
-                callData
-            );
-
-            console.log(`   - Transaction sent: ${chalk.cyan(tx.hash)}`);
-            const receipt = await tx.wait(1);
-            console.log(chalk.bold.green("   - ✅ Trade executed successfully!"), `Block: ${receipt.blockNumber}`);
-
-            // Log for success criteria
-            console.log(`First autonomous decision executed at block #${receipt.blockNumber}`);
-
+            const execTx = await managerWithSessionKey.executeTransaction(this.agentWalletAddress, targetAddress, value, "0x");
+            console.log(`   - Transaction sent: ${execTx.hash}`);
+            await execTx.wait();
+            console.log("   - ✅ AUTONOMOUS TRANSACTION SUCCEEDED!");
         } catch (error) {
-            console.error(chalk.red("   - 🔥 Error executing trade:"), error.reason || error.message);
+            console.error("   - 🔥 AUTONOMOUS TRANSACTION FAILED:", error.reason);
         }
     }
-
-    async run() {
-        console.log(chalk.green("\n🚀 Agent is live and ready to operate."));
-        await this.runDecisionLoop();
-    }
 }
 
-// --- MAIN EXECUTION ---
 async function main() {
-    try {
-        const config = loadConfig();
-        const agent = new OqiaAgent(config);
-        await agent.run();
-    } catch (error) {
-        console.error(chalk.red("\n🚨 A critical error occurred:"), error.message);
-        process.exit(1);
-    }
+    const ownerWallet = new ethers.Wallet(OWNER_PRIVATE_KEY, new ethers.JsonRpcProvider(ALCHEMY_RPC_URL));
+    const agent = new OqiaAgent(1, ownerWallet); // Controlling Bot #1
+
+    await agent.initialize();
+    await agent.executeAutonomousTransaction();
+
+    console.log("\n🎉 Full workflow complete.");
 }
 
-main();
+main().catch(error => {
+    console.error("\n🚨 A critical error occurred:", error);
+    process.exit(1);
+});

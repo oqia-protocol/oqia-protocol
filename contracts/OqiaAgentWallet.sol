@@ -5,31 +5,33 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-/// @title OqiaAgentWallet
-/// @notice A simple, ownable, and upgradeable smart contract wallet for an Oqia agent.
 contract OqiaAgentWallet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
+    mapping(address => bool) public isModuleAuthorized;
+
+    event ModuleAuthorized(address indexed module, bool isAuthorized);
+
+    modifier onlyAuthorized() {
+        require(owner() == msg.sender || isModuleAuthorized[msg.sender], "Not Owner or Authorized Module");
+        _;
     }
+
+    constructor() { _disableInitializers(); }
 
     function initialize(address initialOwner) public initializer {
         __Ownable_init(initialOwner);
         __UUPSUpgradeable_init();
     }
 
-    /// @notice Allows the wallet to receive Ether.
-    receive() external payable {}
+    function authorizeModule(address module, bool isAuthorized) external onlyOwner {
+        isModuleAuthorized[module] = isAuthorized;
+        emit ModuleAuthorized(module, isAuthorized);
+    }
 
-    /// @notice The core function allowing the owner (or an authorized module) to execute calls.
-    /// @param to The address of the contract to call.
-    /// @param value The amount of Ether to send.
-    /// @param data The calldata for the function to be executed.
-    function execute(address to, uint256 value, bytes calldata data) external onlyOwner returns (bool success, bytes memory result) {
+    function execute(address to, uint256 value, bytes calldata data) external onlyAuthorized returns (bool success, bytes memory result) {
         (success, result) = to.call{value: value}(data);
     }
 
-    /// @dev Required by UUPS pattern. Restricts upgrade authorization to the owner.
+    receive() external payable {}
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }

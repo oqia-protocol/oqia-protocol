@@ -44,14 +44,14 @@ contract OqiaBotFactory is Initializable, ERC721Upgradeable, OwnableUpgradeable,
     /// @param botOwner The address that will own the new NFT and the wallet.
     function createBot(address botOwner) external returns (address proxy) {
         require(botOwner != address(0), "Invalid owner");
+        uint256 tokenId = ++_tokenIdCounter;
+        bytes32 salt = bytes32(tokenId);
 
         // Deploy a new lightweight, clone proxy of the agent wallet
-        proxy = Clones.clone(agentWalletImplementation);
+        proxy = Clones.cloneDeterministic(agentWalletImplementation, salt);
 
         // Initialize the new clone, setting the botOwner as its owner
         OqiaAgentWallet(payable(proxy)).initialize(botOwner);
-
-        uint256 tokenId = ++_tokenIdCounter;
 
         botWalletOf[tokenId] = proxy;
         tokenOfWallet[proxy] = tokenId;
