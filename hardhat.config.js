@@ -9,9 +9,25 @@ require("dotenv").config();
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
-  solidity: "0.8.22",
+  solidity: {
+    version: "0.8.22",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,
+      },
+      viaIR: true,
+    },
+  },
   networks: {
     hardhat: {},
+    sepolia: {
+      url: process.env.ALCHEMY_SEPOLIA_RPC_URL || "",
+      accounts:
+        process.env.DEPLOYER_PRIVATE_KEY !== undefined
+          ? [process.env.DEPLOYER_PRIVATE_KEY]
+          : [],
+    },
   },
   gasReporter: {
     enabled: true,

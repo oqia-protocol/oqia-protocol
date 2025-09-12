@@ -1,5 +1,5 @@
-// scripts/mint-bot.js (v4.0 - Oqia-Native Wallet)
-// This script calls the refactored factory to create a new agent wallet.
+// scripts/mint-bot.js (v5.0 - E2E Test Version)
+// This script reads the deployed factory address and mints a new agent wallet.
 
 const { ethers } = require("ethers");
 const fs = require("fs");
@@ -9,46 +9,45 @@ require("dotenv").config();
 
 // --- CONFIGURATION LOADER ---
 function loadConfig() {
-    const {
-        ALCHEMY_SEPOLIA_RPC_URL,
-        DEPLOYER_PRIVATE_KEY
-    } = process.env;
-
-    if (!ALCHEMY_SEPOLIA_RPC_URL || !DEPLOYER_PRIVATE_KEY) {
-        console.error(chalk.red("Error: Missing required environment variables in .env file."));
-        process.exit(1);
+    const { DEPLOYER_PRIVATE_KEY } = process.env;
+    if (!DEPLOYER_PRIVATE_KEY) {
+        throw new Error("Missing DEPLOYER_PRIVATE_KEY in .env file.");
     }
 
-    // Read factory address from the temporary file
-    const factoryAddressPath = path.join("/tmp", "factory-address.tmp");
-    if (!fs.existsSync(factoryAddressPath)) {
-        console.error(chalk.red(`Error: Factory address file not found at ${factoryAddressPath}`));
-        console.error(chalk.yellow("Please run the deployment script first."));
-        process.exit(1);
+    const deployedContractsPath = path.resolve(__dirname, "..", "deployed_contracts.json");
+    if (!fs.existsSync(deployedContractsPath)) {
+        throw new Error("deployed_contracts.json not found. Please run the deployment script first.");
     }
-    const FACTORY_ADDRESS = fs.readFileSync(factoryAddressPath, "utf8").trim();
-    
+    const deployedContracts = JSON.parse(fs.readFileSync(deployedContractsPath, "utf8"));
+
+    const getAddress = (name) => {
+        const address = deployedContracts[name];
+        if (!address) throw new Error(`${name} address not found in deployed_contracts.json`);
+        return address;
+    };
+
+    const factoryAddress = getAddress("OqiaBotFactory");
+
     const factoryArtifactPath = path.resolve(__dirname, "../artifacts/contracts/OqiaBotFactory.sol/OqiaBotFactory.json");
     if (!fs.existsSync(factoryArtifactPath)) {
-        console.error(chalk.red(`Error: ABI file not found at ${factoryArtifactPath}`));
-        console.error(chalk.yellow("Please compile your contracts by running 'npx hardhat compile' first."));
-        process.exit(1);
+        throw new Error("Factory ABI not found. Please compile contracts first.");
     }
 
-    const FACTORY_ABI = JSON.parse(fs.readFileSync(factoryArtifactPath, "utf8")).abi;
+    const factoryAbi = JSON.parse(fs.readFileSync(factoryArtifactPath, "utf8")).abi;
 
     return {
-        rpcUrl: ALCHEMY_SEPOLIA_RPC_URL,
         privateKey: DEPLOYER_PRIVATE_KEY,
-        factoryAddress: FACTORY_ADDRESS,
-        factoryAbi: FACTORY_ABI,
+        factoryAddress: factoryAddress,
+        factoryAbi: factoryAbi,
     };
 }
 
 // --- MAIN MINTING LOGIC ---
 async function main() {
     const config = loadConfig();
-    const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+    const { ALCHEMY_SEPOLIA_RPC_URL } = process.env;
+    // Connect to the Sepolia testnet
+    const provider = new ethers.JsonRpcProvider(ALCHEMY_SEPOLIA_RPC_URL);
     const ownerWallet = new ethers.Wallet(config.privateKey, provider);
 
     console.log(chalk.cyan("🚀 Minting Oqia Agent Wallet..."));

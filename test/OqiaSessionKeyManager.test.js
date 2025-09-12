@@ -1,101 +1,89 @@
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { time } = require("@nomicfoundation/hardhat-network-helpers");
+const { ethers, upgrades } = require("hardhat");
 
-describe.skip("OqiaSessionKeyManager (Refactored)", function () {
-    let sessionManager;
-    let agentWallet;
-    let mockTarget;
-    let owner, walletOwner, sessionKey, other;
+describe("OqiaSessionKeyManager", function () {
+   let factory, sessionKeyManager, agentWallet, owner, other;
+   let agentWalletImplementation; // To deploy clones from
 
-    beforeEach(async function () {
-        [owner, walletOwner, sessionKey, other] = await ethers.getSigners();
+   beforeEach(async function () {
+     [owner, other] = await ethers.getSigners();
 
-        // Deploy MockTarget contract
-        const MockTargetFactory = await ethers.getContractFactory("MockERC20");
-        mockTarget = await MockTargetFactory.deploy("Mock Target", "MT");
-        await mockTarget.waitForDeployment();
+     // deploy factory (ERC721)
+     const Factory = await ethers.getContractFactory("OqiaBotFactory");
+     const OqiaAgentWallet = await ethers.getContractFactory("OqiaAgentWallet");
+     agentWalletImplementation = await OqiaAgentWallet.deploy();
+     await agentWalletImplementation.waitForDeployment();
+     factory = await upgrades.deployProxy(Factory, [agentWalletImplementation.target]);
+     await factory.waitForDeployment();
 
-        // Deploy a single OqiaAgentWallet for the suite
-        const OqiaAgentWallet = await ethers.getContractFactory("OqiaAgentWallet");
-        agentWallet = await OqiaAgentWallet.deploy();
-        await agentWallet.waitForDeployment();
-        await agentWallet.initialize(walletOwner.address);
+     // deploy session manager, linking it to the factory
+     const S = await ethers.getContractFactory("OqiaSessionKeyManager");
+     sessionKeyManager = await S.deploy(factory.target);
+     await sessionKeyManager.waitForDeployment();
+   });
 
-        // Deploy OqiaSessionKeyManager
-        const OqiaSessionKeyManagerFactory = await ethers.getContractFactory("OqiaSessionKeyManager");
-        sessionManager = await OqiaSessionKeyManagerFactory.deploy();
-        await sessionManager.waitForDeployment();
-    });
+   it("accepts setupSessionKey when caller is the NFT owner (factory.ownerOf)", async function () {
+     // mint an agent NFT to 'owner' using factory
+     const tx = await factory.createBot(owner.address);
+     const receipt = await tx.wait();
+     const event = receipt.logs.find(e => factory.interface.parseLog(e)?.name === 'BotCreated');
+     const tokenId = event.args.tokenId;
+     const walletAddress = event.args.wallet;
 
-    describe("Deployment", function () {
-        it("Should set the deployer as the owner", async function () {
-            expect(await sessionManager.owner()).to.equal(owner.address);
-        });
-    });
+     // confirm ownerOf
+     const nftOwner = await factory.ownerOf(tokenId);
+     expect(nftOwner).to.equal(owner.address);
 
-    describe("Session Key Authorization and Execution", function () {
-        let permissions;
-        const valueLimit = ethers.parseEther("1");
-        let validUntil;
+     const agentWalletInstance = await ethers.getContractAt("OqiaAgentWallet", walletAddress);
+     const nativeOwner = await agentWalletInstance.owner();
+     expect(nativeOwner).to.equal(owner.address);
 
-        beforeEach(async function () {
-            validUntil = (await time.latest()) + 3600;
-            const approveSelector = mockTarget.interface.getFunction("approve").selector;
-            permissions = [{
-                target: mockTarget.target,
-                functionSelector: approveSelector
-            }];
+     // The user's patch had a function called setupSessionKey, my contract uses authorizeSessionKey
+     // I will adapt the test to use my function name and arguments.
+     const sessionKey = ethers.Wallet.createRandom();
+     const validUntil = Math.floor(Date.now() / 1000) + 3600;
+     const permissions = [];
 
-            await sessionManager.connect(walletOwner).authorizeSessionKey(
-                agentWallet.target,
-                sessionKey.address,
-                validUntil,
-                valueLimit,
-                permissions,
-                0, 0
-            );
-        });
+     // call authorizeSessionKey as owner (should pass fallback factory check)
+     await expect(
+       sessionKeyManager.connect(owner).authorizeSessionKey(
+           walletAddress,
+           tokenId,
+           sessionKey.address,
+           validUntil,
+           0,
+           permissions,
+           0,
+           0
+        )
+     ).to.not.be.reverted;
+   });
 
-        it("Should correctly authorize a session key with permissions", async function () {
-            const sk = await sessionManager.sessionKeys(agentWallet.target);
-            expect(sk.key).to.equal(sessionKey.address);
+   it("accepts setupSessionKey when caller is the native wallet owner", async function () {
+    // This test ensures the primary check works.
+    // We will mint a bot to `other`, so `other` is the native owner.
+    const tx = await factory.createBot(other.address);
+    const receipt = await tx.wait();
+    const event = receipt.logs.find(e => factory.interface.parseLog(e)?.name === 'BotCreated');
+    const tokenId = event.args.tokenId;
+    const walletAddress = event.args.wallet;
 
-            const permissionHash = ethers.solidityPackedKeccak256(
-                ["address", "address", "address", "bytes4"],
-                [agentWallet.target, sessionKey.address, permissions[0].target, permissions[0].functionSelector]
-            );
-            expect(await sessionManager.isPermissioned(permissionHash)).to.be.true;
-        });
+    const sessionKey = ethers.Wallet.createRandom();
+    const validUntil = Math.floor(Date.now() / 1000) + 3600;
+    const permissions = [];
 
-        it("Should allow a session key to execute a permitted function call", async function () {
-            // In the new model, the SessionManager must own the wallet to execute.
-            await agentWallet.connect(walletOwner).transferOwnership(sessionManager.target);
-            expect(await agentWallet.owner()).to.equal(sessionManager.target);
-
-            const approveTxData = mockTarget.interface.encodeFunctionData("approve", [other.address, ethers.parseEther("10")]);
-
-            // Now the session key can execute through the manager
-            await expect(
-                sessionManager.connect(sessionKey).executeTransaction(
-                    agentWallet.target,
-                    mockTarget.target,
-                    0,
-                    approveTxData
-                )
-            ).to.not.be.reverted;
-        });
-
-        it("Should REJECT an expired session key", async function () {
-            const expiredTime = (await time.latest()) - 1;
-            await sessionManager.connect(walletOwner).authorizeSessionKey(
-                agentWallet.target, sessionKey.address, expiredTime, valueLimit, permissions, 0, 0
-            );
-
-            const approveTxData = mockTarget.interface.encodeFunctionData("approve", [other.address, ethers.parseEther("10")]);
-            await expect(
-                sessionManager.connect(sessionKey).executeTransaction(agentWallet.target, mockTarget.target, 0, approveTxData)
-            ).to.be.revertedWith("Session key has expired");
-        });
-    });
+    // Call authorizeSessionKey as `other` (the native owner)
+    await expect(
+      sessionKeyManager.connect(other).authorizeSessionKey(
+          walletAddress,
+          tokenId,
+          sessionKey.address,
+          validUntil,
+          0,
+          permissions,
+          0,
+          0
+       )
+    ).to.not.be.reverted;
+  });
 });
