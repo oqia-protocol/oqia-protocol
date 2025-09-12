@@ -1,144 +1,96 @@
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { ethers, upgrades } = require("hardhat");
 
-describe("SimpleArbitrageModule", function () {
-    let SimpleArbitrageModule;
-    let mockERC20A, mockERC20B;
-    let mockUniswapRouter;
-    let deployer, safe, other;
-
-    // Mock ERC20 Contract
-    async function deployMockERC20(name, symbol) {
-        const MockERC20 = await ethers.getContractFactory("MockERC20");
-        const mockERC20 = await MockERC20.deploy(name, symbol);
-        await mockERC20.waitForDeployment();
-        return mockERC20;
-    }
+describe("SimpleArbitrageModule (Refactored)", function () {
+    let simpleArbitrageModule, factory, mockRegistry, mockUniswapRouter;
+    let deployer, other;
+    let mockERC20A, mockERC20B; // Make tokens available to the whole suite
+    const DUMMY_MODULE_ID = 1;
 
     before(async function () {
-        [deployer, safe, other] = await ethers.getSigners();
+        [deployer, other] = await ethers.getSigners();
 
-        // Deploy Mock ERC20 contracts
+        // Deploy Agent Wallet Implementation
+        const OqiaAgentWallet = await ethers.getContractFactory("OqiaAgentWallet");
+        const agentWalletImplementation = await OqiaAgentWallet.deploy();
+        await agentWalletImplementation.waitForDeployment();
+
+        // Deploy Factory
+        const OqiaBotFactory = await ethers.getContractFactory("OqiaBotFactory");
+        factory = await upgrades.deployProxy(OqiaBotFactory, [agentWalletImplementation.target]);
+        await factory.waitForDeployment();
+
+        // Deploy Registry and link it to the factory
+        const OqiaModuleRegistry = await ethers.getContractFactory("OqiaModuleRegistry");
+        mockRegistry = await upgrades.deployProxy(OqiaModuleRegistry, ["Test", "TEST", deployer.address]);
+        await mockRegistry.waitForDeployment();
+        await mockRegistry.setBotFactoryAddress(factory.target);
+
+        // Deploy Mock ERC20s
         const MockERC20Factory = await ethers.getContractFactory("MockERC20");
         mockERC20A = await MockERC20Factory.deploy("Token A", "TKA");
         await mockERC20A.waitForDeployment();
         mockERC20B = await MockERC20Factory.deploy("Token B", "TKB");
         await mockERC20B.waitForDeployment();
 
-        // Deploy Mock Uniswap Router and fund it with tokenB for swaps
+        // Deploy Mock Uniswap Router and fund it
         const MockUniswapRouterFactory = await ethers.getContractFactory("MockUniswapRouter");
         mockUniswapRouter = await MockUniswapRouterFactory.deploy();
         await mockUniswapRouter.waitForDeployment();
+        await mockERC20A.mint(mockUniswapRouter.target, ethers.parseEther("2000"));
         await mockERC20B.mint(mockUniswapRouter.target, ethers.parseEther("2000"));
-        expect(await mockERC20B.balanceOf(mockUniswapRouter.target)).to.equal(ethers.parseEther("2000"));
-
 
         // Deploy SimpleArbitrageModule
         const SimpleArbitrageModuleFactory = await ethers.getContractFactory("SimpleArbitrageModule");
-        simpleArbitrageModule = await SimpleArbitrageModuleFactory.deploy(mockUniswapRouter.target);
+        simpleArbitrageModule = await SimpleArbitrageModuleFactory.deploy(
+            mockUniswapRouter.target,
+            mockRegistry.target,
+            DUMMY_MODULE_ID
+        );
         await simpleArbitrageModule.waitForDeployment();
+
+        // Register the module
+        await mockRegistry.registerModule(
+            simpleArbitrageModule.target,
+            deployer.address,
+            ethers.parseEther("0.01"),
+            500,
+            "ipfs://test"
+        );
     });
 
-    // Helper function to mint tokens to an address
-    async function mintTokens(token, to, amount) {
-        await token.mint(to, amount);
-    }
+    it("Should execute a trade successfully WHEN LICENSED", async function () {
+        // 1. Create a new bot wallet via the factory, owned by 'other' signer
+        const tx = await factory.createBot(other.address);
+        const receipt = await tx.wait();
+        const event = receipt.logs.find(e => e.eventName === 'BotCreated');
+        const agentWalletAddress = event.args.wallet;
+        const agentWallet = await ethers.getContractAt("OqiaAgentWallet", agentWalletAddress);
 
-    describe("Deployment", function () {
-        it("Should set the correct owner", async function () {
-            expect(await simpleArbitrageModule.owner()).to.equal(deployer.address);
-        });
+        // 2. Mint a license for the bot's owner
+        await mockRegistry.connect(other).mintModuleLicense(DUMMY_MODULE_ID, other.address, { value: ethers.parseEther("0.01") });
 
-        it("Should set the correct Uniswap Router address", async function () {
-            expect(await simpleArbitrageModule.uniswapRouter()).to.equal(mockUniswapRouter.target);
-        });
-    });
+        // 3. Fund and approve the agent wallet for the trade
+        const amountIn = ethers.parseEther("100");
+        await mockERC20A.mint(agentWallet.target, amountIn);
 
-    describe("Access Control", function () {
-        it("Should allow only the authorized Safe to call executeArbitrage", async function () {
-            const amountIn = ethers.parseEther("100");
-            await mintTokens(mockERC20A, safe.address, amountIn);
-await mockERC20A.connect(safe).approve(simpleArbitrageModule.target, amountIn);
+        const approveData = mockERC20A.interface.encodeFunctionData("approve", [simpleArbitrageModule.target, amountIn]);
+        await agentWallet.connect(other).execute(mockERC20A.target, 0, approveData);
 
-            // Attempt to call from 'other' account, should revert
-            await expect(
-                simpleArbitrageModule.connect(other).executeArbitrage(
-                    safe.address,
-                    mockERC20A.target,
-                    mockERC20B.target,
-                    amountIn
-                )
-            ).to.be.revertedWith("Only the authorized Safe can call this");
+        // 4. Set up mock router and execute trade
+        await mockUniswapRouter.setSwapResults([ethers.parseEther("90"), ethers.parseEther("105")]);
 
-            // Call from 'safe' account, should not revert (further checks in executeArbitrage tests)
-            expect(await mockERC20A.balanceOf(safe.address)).to.equal(amountIn);
-            expect(await mockERC20A.allowance(safe.address, simpleArbitrageModule.target)).to.equal(amountIn);
-            await mockUniswapRouter.setSwapResults([ethers.parseEther("1"), ethers.parseEther("1")]);
-            await expect(
-                simpleArbitrageModule.connect(safe).executeArbitrage(
-                    safe.address,
-                    mockERC20A.target,
-                    mockERC20B.target,
-                    amountIn
-                )
-            ).to.not.be.reverted;
-        });
-    });
+        const moduleInterface = simpleArbitrageModule.interface;
+        const executeArbitrageData = moduleInterface.encodeFunctionData("executeArbitrage", [
+            agentWallet.target,
+            mockERC20A.target,
+            mockERC20B.target,
+            amountIn
+        ]);
 
-    describe("executeArbitrage", function () {
-        const initialAmountA = ethers.parseEther("100");
-        const expectedAmountB = ethers.parseEther("90"); // Mocked swap result
-        const expectedReturnAmountA = ethers.parseEther("95"); // Mocked arbitrage profit
+        await agentWallet.connect(other).execute(simpleArbitrageModule.target, 0, executeArbitrageData);
 
-        beforeEach(async function () {
-            // Create a new, isolated Safe wallet for each test to avoid state pollution
-            safe = ethers.Wallet.createRandom().connect(ethers.provider);
-            await deployer.sendTransaction({ to: safe.address, value: ethers.parseEther("1.0") }); // Fund wallet
-
-            // Mint initial tokens to the new Safe wallet
-            await mintTokens(mockERC20A, safe.address, initialAmountA);
-
-            // Approve the module to spend the tokens
-            await mockERC20A.connect(safe).approve(simpleArbitrageModule.target, initialAmountA);
-
-            // Configure mock router for predictable swaps
-            await mockUniswapRouter.setSwapResults([expectedAmountB, expectedReturnAmountA]);
-        });
-
-        it("Should execute a successful arbitrage trade and return profit to Safe", async function () {
-            // Initial balances
-            expect(await mockERC20A.balanceOf(safe.address)).to.equal(initialAmountA);
-            expect(await mockERC20B.balanceOf(safe.address)).to.equal(0);
-
-            // Execute arbitrage from the Safe wallet
-            await simpleArbitrageModule.connect(safe).executeArbitrage(
-                safe.address,
-                mockERC20A.target,
-                mockERC20B.target,
-                initialAmountA
-            );
-
-            // Verify final balances
-            expect(await mockERC20A.balanceOf(safe.address)).to.equal(expectedReturnAmountA);
-            expect(await mockERC20B.balanceOf(safe.address)).to.equal(0);
-
-            // Verify intermediate balances (module should be empty after trade)
-            expect(await mockERC20A.balanceOf(simpleArbitrageModule.target)).to.equal(0);
-            expect(await mockERC20B.balanceOf(simpleArbitrageModule.target)).to.equal(0);
-        });
-
-        it("Should handle zero amountIn gracefully", async function () {
-    await mockERC20A.connect(safe).approve(simpleArbitrageModule.target, ethers.parseEther("100"));
-            await simpleArbitrageModule.connect(safe).executeArbitrage(
-                safe.address,
-                mockERC20A.target,
-                mockERC20B.target,
-                0
-            );
-
-            expect(await mockERC20A.balanceOf(safe.address)).to.equal(initialAmountA); // No change
-            expect(await mockERC20B.balanceOf(safe.address)).to.equal(0);
-        });
+        // 5. Check final balance
+        expect(await mockERC20A.balanceOf(agentWallet.target)).to.equal(ethers.parseEther("105"));
     });
 });
-

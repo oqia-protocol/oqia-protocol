@@ -1,45 +1,52 @@
-const { ethers, upgrades, run } = require("hardhat");
-const { getImplementationAddress } = require("@openzeppelin/upgrades-core");
+// scripts/deploy.js (v3.0 - Oqia-Native Wallet)
+// This script deploys the Oqia-native agent wallet and a refactored factory,
+// and automatically updates the .env file with the new factory address.
 
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+const { ethers, upgrades, run } = require("hardhat");
+const fs = require("fs");
+const path = require("path");
+const chalk = require("chalk");
+
+// Helper to write data to a temporary file
+function writeToTmpFile(filename, content) {
+    const tmpPath = path.join("/tmp", filename);
+    fs.writeFileSync(tmpPath, content);
+    console.log(chalk.green(`   ✅ Data written to: ${tmpPath}`));
 }
 
 async function main() {
-    console.log("Starting deployment...");
-    const SAFE_SINGLETON_ADDR = "0x41675C099F32341bf84BFc5382aF534df5C7461a";
-    const SAFE_PROXY_FACTORY_ADDR = "0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67";
-    const ENTRY_POINT_ADDR = "0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789";
-
+    console.log(chalk.blue.bold("🚀 Deploying Oqia Protocol with Oqia-Native Wallets..."));
     const [deployer] = await ethers.getSigners();
-    console.log("Deploying with account:", deployer.address);
+    console.log(chalk.cyan("👤 Deployer account:"), deployer.address);
+    console.log(chalk.gray("----------------------------------------------------"));
 
+    // 1. Deploy the master OqiaAgentWallet implementation contract
+    console.log(chalk.yellow("\n1. Deploying OqiaAgentWallet implementation..."));
+    const OqiaAgentWallet = await ethers.getContractFactory("OqiaAgentWallet");
+    const agentWalletImplementation = await OqiaAgentWallet.deploy();
+    await agentWalletImplementation.waitForDeployment();
+    console.log(chalk.green("   ✅ OqiaAgentWallet implementation deployed to:"), chalk.bold(agentWalletImplementation.target));
+
+    // 2. Deploy the refactored OqiaBotFactory (as a UUPS proxy)
+    console.log(chalk.yellow("\n2. Deploying OqiaBotFactory..."));
     const OqiaBotFactory = await ethers.getContractFactory("OqiaBotFactory");
     const factoryProxy = await upgrades.deployProxy(
         OqiaBotFactory,
-        [ "Oqia Bot NFT", "OQIA", SAFE_SINGLETON_ADDR, SAFE_PROXY_FACTORY_ADDR, ENTRY_POINT_ADDR ],
+        [agentWalletImplementation.target], // Pass implementation address to initializer
         { initializer: "initialize", kind: "uups" }
     );
     await factoryProxy.waitForDeployment();
-    const proxyAddress = factoryProxy.target;
-    const implementationAddress = await getImplementationAddress(factoryProxy.runner.provider, proxyAddress);
-  
-    console.log(`✅ Proxy deployed to: ${proxyAddress}`);
-    console.log(`✅ Implementation deployed to: ${implementationAddress}`);;
+    console.log(chalk.green("   ✅ OqiaBotFactory (Proxy) deployed to:"), chalk.bold(factoryProxy.target));
 
-    console.log("\nWaiting 30s for Etherscan indexing...");
-    await sleep(30000);
+    // 3. Write the factory address to a temporary file
+    console.log(chalk.blue.bold("\n🔄 Writing factory address to temporary file..."));
+    writeToTmpFile("factory-address.tmp", factoryProxy.target);
 
-    try {
-        console.log("Verifying implementation...");
-        await run("verify:verify", { address: implementationAddress, constructorArguments: [] });
-        console.log("✅ Verification successful.");
-    } catch (error) {
-        console.error(`🔥 Verification failed: ${error.message}`);
-    }
+    console.log(chalk.green.bold("\n🎉🎉🎉 Refactor deployment complete! 🎉🎉🎉"));
+    console.log(chalk.white("You are now unblocked and ready to complete your final tests."));
 }
 
 main().catch((error) => {
     console.error(error);
-    process.exitCode = 1;
+    process.exit(1);
 });

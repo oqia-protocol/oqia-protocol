@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OQIA Protocol - Bot Minter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>OQIA Protocol</h1>
+            <p>Your On-chain AI Agent</p>
+        </header>
+        <main>
+            <section id="connection-section">
+                <button id="connect-wallet-btn">Connect Wallet</button>
+                <p id="wallet-status">Status: Not Connected</p>
+            </section>
+            <section id="minting-section" class="hidden">
+                <h2>Mint Your AI Bot</h2>
+                <button id="mint-bot-btn">Mint Bot</button>
+                <div id="mint-status"></div>
+            </section>
+            <section id="bot-status-section" class="hidden">
+                <h2>Your Bot</h2>
+                <p><strong>Token ID:</strong> <span id="bot-token-id"></span></p>
+                <p><strong>Wallet Address:</strong> <span id="bot-wallet-address"></span></p>
+                <p><strong>Status:</strong> <span id="bot-status">Idle</span></p>
+            </section>
+        </main>
+    </div>
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

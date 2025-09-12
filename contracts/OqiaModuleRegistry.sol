@@ -8,6 +8,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol";
+import "./interfaces/IOqiaBotFactory.sol";
 
 contract OqiaModuleRegistry is
     Initializable,
@@ -27,43 +28,36 @@ contract OqiaModuleRegistry is
     error IncorrectPayment();
     error TransferFailed();
     error ZeroAddress();
+    error FactoryNotSet();
 
     // --- Structs ---
     struct ModuleInfo {
-        address moduleAddress; // The contract address of the module's implementation
-        address developer;     // The address for receiving royalties and primary sale proceeds
-        uint96 royaltyBps;     // Royalty basis points for secondary sales (e.g., 500 for 5%)
-        uint256 price;         // Price to mint a license in wei
-        string metadataURI;    // URI for module metadata
+        address moduleAddress;
+        address developer;
+        uint96 royaltyBps;
+        uint256 price;
+        string metadataURI;
     }
 
     // --- State Variables ---
-    uint256 private _licenseIdCounter; // Counter for generating unique license token IDs
-    uint256 private _moduleIdCounter;  // Counter for generating unique module IDs
+    uint256 private _licenseIdCounter;
+    uint256 private _moduleIdCounter;
 
-    mapping(uint256 => ModuleInfo) public moduleInfoOf; // moduleId => ModuleInfo
-    mapping(address => uint256) public moduleIdOfAddress; // module contract address => moduleId
-    mapping(uint256 => uint256) public licenseIdToModuleId; // license tokenId => moduleId
+    mapping(uint256 => ModuleInfo) public moduleInfoOf;
+    mapping(address => uint256) public moduleIdOfAddress;
+    mapping(uint256 => uint256) public licenseIdToModuleId;
+    mapping(address => mapping(uint256 => uint256)) public licenseCount; // owner => moduleId => count
 
-    address public protocolTreasury; // Address to receive platform commissions
+    address public protocolTreasury;
+    IOqiaBotFactory public oqiaBotFactory;
 
-    uint256 public constant PLATFORM_FEE_BPS = 2000; // 20%
+    uint256 public constant PLATFORM_FEE_BPS = 2000;
     uint256 public constant BPS_DENOMINATOR = 10000;
 
     // --- Events ---
-    event ModuleRegistered(
-        uint256 indexed moduleId,
-        address indexed moduleAddress,
-        address indexed developer,
-        uint256 price,
-        string metadataURI
-    );
-    event ModuleLicenseMinted(
-        uint256 indexed moduleId,
-        uint256 indexed licenseId,
-        address indexed to,
-        uint256 price
-    );
+    event ModuleRegistered(uint256 indexed moduleId, address indexed moduleAddress, address indexed developer, uint256 price, string metadataURI);
+    event ModuleLicenseMinted(uint256 indexed moduleId, uint256 indexed licenseId, address indexed to, uint256 price);
+    event BotFactoryAddressSet(address indexed factoryAddress);
 
     // --- Initializer ---
     function initialize(string memory name_, string memory symbol_, address _protocolTreasury) public initializer {
@@ -77,12 +71,18 @@ contract OqiaModuleRegistry is
         protocolTreasury = _protocolTreasury;
     }
 
-    // --- Module Management (Owner only) ---
+    // --- Owner Functions ---
+    function setBotFactoryAddress(address _factoryAddress) external onlyOwner {
+        if (_factoryAddress == address(0)) revert ZeroAddress();
+        oqiaBotFactory = IOqiaBotFactory(_factoryAddress);
+        emit BotFactoryAddressSet(_factoryAddress);
+    }
+
     function registerModule(
         address moduleAddress,
         address developer,
         uint256 price,
-        uint96 royaltyBps, // e.g., 500 for 5%
+        uint96 royaltyBps,
         string calldata metadataURI
     ) external onlyOwner whenNotPaused nonReentrant returns (uint256 moduleId) {
         if (moduleAddress == address(0)) revert InvalidModuleAddress();
@@ -104,18 +104,12 @@ contract OqiaModuleRegistry is
     }
 
     // --- Public Functions ---
-    function mintModuleLicense(uint256 moduleId, address to)
-        public
-        payable
-        whenNotPaused
-        nonReentrant
-    {
+    function mintModuleLicense(uint256 moduleId, address to) public payable whenNotPaused nonReentrant {
         ModuleInfo storage moduleInfo = moduleInfoOf[moduleId];
         if (moduleInfo.moduleAddress == address(0)) revert ModuleNotRegistered();
         if (to == address(0)) revert ZeroAddress();
         if (msg.value != moduleInfo.price) revert IncorrectPayment();
 
-        // Distribute funds
         uint256 platformFee = (moduleInfo.price * PLATFORM_FEE_BPS) / BPS_DENOMINATOR;
         uint256 developerShare = moduleInfo.price - platformFee;
 
@@ -125,17 +119,29 @@ contract OqiaModuleRegistry is
         (bool successDev, ) = moduleInfo.developer.call{value: developerShare}("");
         if (!successDev) revert TransferFailed();
 
-        // Mint the license NFT
         uint256 licenseId = ++_licenseIdCounter;
         licenseIdToModuleId[licenseId] = moduleId;
+        // The _beforeTokenTransfer hook will handle updating the licenseCount
         _safeMint(to, licenseId);
 
         emit ModuleLicenseMinted(moduleId, licenseId, to, moduleInfo.price);
     }
 
     // --- View Functions & Overrides ---
+    function hasModuleLicense(address botWallet, uint256 moduleId) public view returns (bool) {
+        if (address(oqiaBotFactory) == address(0)) revert FactoryNotSet();
+
+        uint256 botTokenId = oqiaBotFactory.tokenOfWallet(botWallet);
+        if (botTokenId == 0) return false; // Not a valid bot wallet
+
+        address botOwner = oqiaBotFactory.ownerOf(botTokenId);
+        if (botOwner == address(0)) return false; // Should not happen if token exists
+
+        return licenseCount[botOwner][moduleId] > 0;
+    }
+
     function tokenURI(uint256 licenseId) public view override returns (string memory) {
-        _requireOwned(licenseId); // Reverts if token does not exist
+        _requireOwned(licenseId);
         uint256 moduleId = licenseIdToModuleId[licenseId];
         return moduleInfoOf[moduleId].metadataURI;
     }
@@ -146,7 +152,7 @@ contract OqiaModuleRegistry is
         override
         returns (address receiver, uint256 royaltyAmount)
     {
-        _requireOwned(licenseId); // Reverts if token does not exist
+        _requireOwned(licenseId);
         uint256 moduleId = licenseIdToModuleId[licenseId];
         ModuleInfo storage moduleInfo = moduleInfoOf[moduleId];
         receiver = moduleInfo.developer;
@@ -161,6 +167,27 @@ contract OqiaModuleRegistry is
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
+    }
+
+    function _update(address to, uint256 tokenId, address auth)
+        internal
+        override
+        returns (address)
+    {
+        uint256 moduleId = licenseIdToModuleId[tokenId];
+        address from = _ownerOf(tokenId);
+
+        // Update license count before the transfer
+        if (from != address(0)) {
+            licenseCount[from][moduleId] -= 1;
+        }
+        if (to != address(0)) {
+            licenseCount[to][moduleId] += 1;
+        }
+
+        // The 'auth' parameter is new in v5 for transfer approvals.
+        // We call the parent _update function to execute the actual transfer.
+        return super._update(to, tokenId, auth);
     }
 
     function pause() external onlyOwner {
