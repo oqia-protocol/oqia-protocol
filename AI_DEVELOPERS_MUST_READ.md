@@ -3,7 +3,7 @@
 **IMPORTANT: Before making any changes to this repository, you MUST read and follow these instructions.**
 
 ## 1. Local Commitment Message Protocol
-- Every developer (human or AI) is required to update `/docs/LOCAL_COMMITMENT_MESSAGE.md` for every meaningful change, feature, or fix.
+- Every developer (human or AI) is required to update `/docs/AI_COMMITMENT_MESSAGE.md` for every meaningful change, feature, or fix.
 - **You MUST use the script** `node scripts/update_commitment_message.js "Your message here"` to append a timestamped entry describing your change.
 - This script makes it easy and consistent to log your work. It automatically adds a timestamp and appends your message to the commitment file.
 - If you do not use this script, your work may be considered invalid or incomplete.
