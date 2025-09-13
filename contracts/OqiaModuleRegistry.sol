@@ -1,23 +1,19 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.22;
+pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/common/ERC2981.sol";
 import "./interfaces/IOqiaBotFactory.sol";
 
 contract OqiaModuleRegistry is
-    Initializable,
-    ERC721Upgradeable,
-    OwnableUpgradeable,
-    PausableUpgradeable,
-    UUPSUpgradeable,
-    ReentrancyGuardUpgradeable,
-    ERC2981Upgradeable
+    ERC721,
+    Ownable,
+    Pausable,
+    ReentrancyGuard,
+    ERC2981
 {
     // --- Errors ---
     error ModuleAlreadyRegistered();
@@ -29,6 +25,7 @@ contract OqiaModuleRegistry is
     error TransferFailed();
     error ZeroAddress();
     error FactoryNotSet();
+    error ModuleIsBlacklisted();
 
     // --- Structs ---
     struct ModuleInfo {
@@ -45,6 +42,7 @@ contract OqiaModuleRegistry is
 
     mapping(uint256 => ModuleInfo) public moduleInfoOf;
     mapping(address => uint256) public moduleIdOfAddress;
+    mapping(uint256 => bool) public moduleBlacklist;
     mapping(uint256 => uint256) public licenseIdToModuleId;
     mapping(address => mapping(uint256 => uint256)) public licenseCount; // owner => moduleId => count
 
@@ -58,15 +56,19 @@ contract OqiaModuleRegistry is
     event ModuleRegistered(uint256 indexed moduleId, address indexed moduleAddress, address indexed developer, uint256 price, string metadataURI);
     event ModuleLicenseMinted(uint256 indexed moduleId, uint256 indexed licenseId, address indexed to, uint256 price);
     event BotFactoryAddressSet(address indexed factoryAddress);
+    event ModuleBlacklisted(uint256 indexed moduleId, bool isBlacklisted);
 
-    // --- Initializer ---
-    function initialize(string memory name_, string memory symbol_, address _protocolTreasury) public initializer {
-        __ERC721_init(name_, symbol_);
-        __Ownable_init(msg.sender);
-        __Pausable_init();
-        __UUPSUpgradeable_init();
-        __ReentrancyGuard_init();
-        __ERC2981_init();
+    // --- Modifiers ---
+    modifier notBlacklisted(uint256 moduleId) {
+        if (moduleBlacklist[moduleId]) revert ModuleIsBlacklisted();
+        _;
+    }
+
+    // --- Constructor ---
+    constructor(string memory name_, string memory symbol_, address _protocolTreasury, address initialOwner) 
+        ERC721(name_, symbol_) 
+        Ownable(initialOwner)
+    {
         if (_protocolTreasury == address(0)) revert ZeroAddress();
         protocolTreasury = _protocolTreasury;
     }
@@ -76,6 +78,11 @@ contract OqiaModuleRegistry is
         if (_factoryAddress == address(0)) revert ZeroAddress();
         oqiaBotFactory = IOqiaBotFactory(_factoryAddress);
         emit BotFactoryAddressSet(_factoryAddress);
+    }
+
+    function setModuleBlacklist(uint256 moduleId, bool isBlacklisted) external onlyOwner {
+        moduleBlacklist[moduleId] = isBlacklisted;
+        emit ModuleBlacklisted(moduleId, isBlacklisted);
     }
 
     function registerModule(
@@ -104,7 +111,7 @@ contract OqiaModuleRegistry is
     }
 
     // --- Public Functions ---
-    function mintModuleLicense(uint256 moduleId, address to) public payable whenNotPaused nonReentrant {
+    function mintModuleLicense(uint256 moduleId, address to) public payable whenNotPaused nonReentrant notBlacklisted(moduleId) {
         ModuleInfo storage moduleInfo = moduleInfoOf[moduleId];
         if (moduleInfo.moduleAddress == address(0)) revert ModuleNotRegistered();
         if (to == address(0)) revert ZeroAddress();
@@ -121,7 +128,6 @@ contract OqiaModuleRegistry is
 
         uint256 licenseId = ++_licenseIdCounter;
         licenseIdToModuleId[licenseId] = moduleId;
-        // The _beforeTokenTransfer hook will handle updating the licenseCount
         _safeMint(to, licenseId);
 
         emit ModuleLicenseMinted(moduleId, licenseId, to, moduleInfo.price);
@@ -130,6 +136,7 @@ contract OqiaModuleRegistry is
     // --- View Functions & Overrides ---
     function hasModuleLicense(address botWallet, uint256 moduleId) public view returns (bool) {
         if (address(oqiaBotFactory) == address(0)) revert FactoryNotSet();
+        if (moduleBlacklist[moduleId]) return false; // Treat blacklisted modules as not having a license
 
         uint256 botTokenId = oqiaBotFactory.tokenOfWallet(botWallet);
         if (botTokenId == 0) return false; // Not a valid bot wallet
@@ -143,6 +150,7 @@ contract OqiaModuleRegistry is
     function tokenURI(uint256 licenseId) public view override returns (string memory) {
         _requireOwned(licenseId);
         uint256 moduleId = licenseIdToModuleId[licenseId];
+        if (moduleBlacklist[moduleId]) revert ModuleIsBlacklisted();
         return moduleInfoOf[moduleId].metadataURI;
     }
 
@@ -154,6 +162,7 @@ contract OqiaModuleRegistry is
     {
         _requireOwned(licenseId);
         uint256 moduleId = licenseIdToModuleId[licenseId];
+        if (moduleBlacklist[moduleId]) revert ModuleIsBlacklisted();
         ModuleInfo storage moduleInfo = moduleInfoOf[moduleId];
         receiver = moduleInfo.developer;
         royaltyAmount = (_salePrice * moduleInfo.royaltyBps) / BPS_DENOMINATOR;
@@ -163,7 +172,7 @@ contract OqiaModuleRegistry is
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(ERC721Upgradeable, ERC2981Upgradeable)
+        override(ERC721, ERC2981)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
@@ -177,7 +186,6 @@ contract OqiaModuleRegistry is
         uint256 moduleId = licenseIdToModuleId[tokenId];
         address from = _ownerOf(tokenId);
 
-        // Update license count before the transfer
         if (from != address(0)) {
             licenseCount[from][moduleId] -= 1;
         }
@@ -185,8 +193,6 @@ contract OqiaModuleRegistry is
             licenseCount[to][moduleId] += 1;
         }
 
-        // The 'auth' parameter is new in v5 for transfer approvals.
-        // We call the parent _update function to execute the actual transfer.
         return super._update(to, tokenId, auth);
     }
 
@@ -197,6 +203,4 @@ contract OqiaModuleRegistry is
     function unpause() external onlyOwner {
         _unpause();
     }
-
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }

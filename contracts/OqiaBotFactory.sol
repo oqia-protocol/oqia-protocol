@@ -10,8 +10,9 @@ import "./OqiaAgentWallet.sol";
 contract OqiaBotFactory is Initializable, ERC721Upgradeable, OwnableUpgradeable, UUPSUpgradeable {
     uint256 private _tokenCounter;
     mapping(uint256 => address) public agentWallets;
+    mapping(address => uint256) public tokenOfWallet;
 
-    event AgentCreated(uint256 indexed tokenId, address indexed agentWallet, address indexed owner);
+    event BotCreated(uint256 indexed tokenId, address indexed owner, address wallet);
 
     function initialize(string memory name, string memory symbol, address initialOwner) public initializer {
         __ERC721_init(name, symbol);
@@ -20,18 +21,23 @@ contract OqiaBotFactory is Initializable, ERC721Upgradeable, OwnableUpgradeable,
         _tokenCounter = 0;
     }
 
-    function mintAgent(address agentOwner) public onlyOwner returns (uint256) {
+    function createBot(address botOwner) external onlyOwner returns (address) {
+        require(botOwner != address(0), "Invalid owner");
         uint256 tokenId = _tokenCounter;
-        _safeMint(agentOwner, tokenId);
+        _safeMint(botOwner, tokenId);
 
         OqiaAgentWallet agentWallet = new OqiaAgentWallet();
-        agentWallet.initialize(agentOwner);
-        agentWallets[tokenId] = address(agentWallet);
+        agentWallet.initialize(botOwner);
+        address walletAddress = address(agentWallet);
 
-        emit AgentCreated(tokenId, address(agentWallet), agentOwner);
+        agentWallets[tokenId] = walletAddress;
+        tokenOfWallet[walletAddress] = tokenId;
+
+
+        emit BotCreated(tokenId, botOwner, walletAddress);
 
         _tokenCounter++;
-        return tokenId;
+        return walletAddress;
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}

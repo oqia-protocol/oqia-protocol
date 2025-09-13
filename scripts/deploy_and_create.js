@@ -1,11 +1,6 @@
-const { ethers, upgrades } = require("hardhat");
+const { ethers } = require("hardhat");
+const fs = require("fs");
 const chalk = require("chalk");
-
-// SAFETY: set SKIP_DEPLOY=1 to avoid running deployments in CI/local checks
-if (process.env.SKIP_DEPLOY) {
-    console.log("SKIP_DEPLOY is set — aborting deployment script.");
-    process.exit(0);
-}
 
 async function main() {
     console.log(chalk.blue.bold("🚀 Deploying All Oqia Protocol Contracts..."));
@@ -15,32 +10,21 @@ async function main() {
 
     const deployments = {};
 
-    // 1. Deploy OqiaAgentWallet implementation
-    console.log(chalk.yellow("\n1. Deploying OqiaAgentWallet..."));
-    const OqiaAgentWallet = await ethers.getContractFactory("OqiaAgentWallet");
-    const agentWalletImplementation = await OqiaAgentWallet.deploy();
-    await agentWalletImplementation.waitForDeployment();
-    deployments.OqiaAgentWallet = agentWalletImplementation.target;
-    console.log(chalk.green("   ✅ OqiaAgentWallet implementation deployed to:"), chalk.bold(deployments.OqiaAgentWallet));
-
-    // 2. Deploy OqiaBotFactory (Proxy)
-    console.log(chalk.yellow("\n2. Deploying OqiaBotFactory..."));
+    console.log(chalk.yellow("\n1. Deploying OqiaBotFactory..."));
     const OqiaBotFactory = await ethers.getContractFactory("OqiaBotFactory");
-    const factoryProxy = await upgrades.deployProxy(OqiaBotFactory, [deployments.OqiaAgentWallet]);
-    await factoryProxy.waitForDeployment();
-    deployments.OqiaBotFactory = factoryProxy.target;
-    console.log(chalk.green("   ✅ OqiaBotFactory (Proxy) deployed to:"), chalk.bold(deployments.OqiaBotFactory));
+    const factory = await OqiaBotFactory.deploy(deployer.address);
+    await factory.waitForDeployment();
+    deployments.OqiaBotFactory = factory.target;
+    console.log(chalk.green("   ✅ OqiaBotFactory deployed to:"), chalk.bold(deployments.OqiaBotFactory));
 
-    // 3. Deploy OqiaModuleRegistry (Proxy)
-    console.log(chalk.yellow("\n3. Deploying OqiaModuleRegistry..."));
+    console.log(chalk.yellow("\n2. Deploying OqiaModuleRegistry..."));
     const OqiaModuleRegistry = await ethers.getContractFactory("OqiaModuleRegistry");
-    const registryProxy = await upgrades.deployProxy(OqiaModuleRegistry, ["Oqia Modules", "OQM", deployer.address]);
-    await registryProxy.waitForDeployment();
-    deployments.OqiaModuleRegistry = registryProxy.target;
-    console.log(chalk.green("   ✅ OqiaModuleRegistry (Proxy) deployed to:"), chalk.bold(deployments.OqiaModuleRegistry));
+    const registry = await OqiaModuleRegistry.deploy("Oqia Modules", "OQM", deployer.address, deployer.address);
+    await registry.waitForDeployment();
+    deployments.OqiaModuleRegistry = registry.target;
+    console.log(chalk.green("   ✅ OqiaModuleRegistry deployed to:"), chalk.bold(deployments.OqiaModuleRegistry));
 
-    // 4. Deploy MockERC20 Tokens
-    console.log(chalk.yellow("\n4. Deploying Mock ERC20 Tokens..."));
+    console.log(chalk.yellow("\n3. Deploying Mock ERC20 Tokens..."));
     const MockERC20 = await ethers.getContractFactory("MockERC20");
     const tokenA = await MockERC20.deploy("Token A", "TKA");
     await tokenA.waitForDeployment();
@@ -51,37 +35,58 @@ async function main() {
     deployments.MockERC20B = tokenB.target;
     console.log(chalk.green("   ✅ MockERC20B deployed to:"), chalk.bold(deployments.MockERC20B));
 
-    // 5. Deploy MockUniswapRouter
-    console.log(chalk.yellow("\n5. Deploying MockUniswapRouter..."));
+    console.log(chalk.yellow("\n4. Deploying MockUniswapRouter..."));
     const MockUniswapRouter = await ethers.getContractFactory("MockUniswapRouter");
     const mockRouter = await MockUniswapRouter.deploy();
     await mockRouter.waitForDeployment();
     deployments.MockUniswapRouter = mockRouter.target;
     console.log(chalk.green("   ✅ MockUniswapRouter deployed to:"), chalk.bold(deployments.MockUniswapRouter));
 
-    // 6. Deploy SimpleArbitrageModule
-    console.log(chalk.yellow("\n6. Deploying SimpleArbitrageModule..."));
+    console.log(chalk.yellow("\n5. Deploying SimpleArbitrageModule..."));
     const SimpleArbitrageModule = await ethers.getContractFactory("SimpleArbitrageModule");
     const arbitrageModule = await SimpleArbitrageModule.deploy(deployments.MockUniswapRouter, deployments.OqiaModuleRegistry, 1);
     await arbitrageModule.waitForDeployment();
     deployments.SimpleArbitrageModule = arbitrageModule.target;
     console.log(chalk.green("   ✅ SimpleArbitrageModule deployed to:"), chalk.bold(deployments.SimpleArbitrageModule));
 
-    // 7. Deploy OqiaSessionKeyManager
-    console.log(chalk.yellow("\n7. Deploying OqiaSessionKeyManager..."));
+    console.log(chalk.yellow("\n6. Deploying OqiaSessionKeyManager..."));
     const OqiaSessionKeyManager = await ethers.getContractFactory("OqiaSessionKeyManager");
     const sessionManager = await OqiaSessionKeyManager.deploy();
     await sessionManager.waitForDeployment();
     deployments.OqiaSessionKeyManager = sessionManager.target;
     console.log(chalk.green("   ✅ OqiaSessionKeyManager deployed to:"), chalk.bold(deployments.OqiaSessionKeyManager));
 
-    // 8. Configure contracts
-    console.log(chalk.yellow("\n8. Configuring contracts..."));
-    await registryProxy.connect(deployer).setBotFactoryAddress(deployments.OqiaBotFactory);
+    console.log(chalk.yellow("\n7. Configuring contracts..."));
+    await registry.connect(deployer).setBotFactoryAddress(deployments.OqiaBotFactory);
     console.log(chalk.green("   ✅ OqiaModuleRegistry factory address set."));
+
+    console.log(chalk.yellow("\n8. Saving deployment addresses..."));
+    fs.writeFileSync("deployed_contracts.json", JSON.stringify(deployments, null, 2));
+    console.log(chalk.green("   ✅ Deployment addresses saved to deployed_contracts.json"));
 
     console.log(chalk.green.bold("\n🎉🎉🎉 All contracts deployed successfully! 🎉🎉🎉"));
     console.log(chalk.white(JSON.stringify(deployments, null, 2)));
+
+    // Create a bot
+    console.log(chalk.blue.bold("\n🤖 Creating a new bot..."));
+    const oqiaBotFactory = await ethers.getContractAt("OqiaBotFactory", deployments.OqiaBotFactory);
+    const newWallet = ethers.Wallet.createRandom();
+
+    try {
+        const tx = await oqiaBotFactory.createBot(newWallet.address);
+        const receipt = await tx.wait();
+        const botCreatedEvent = receipt.logs.find((e) => e.eventName === "BotCreated");
+
+        if (botCreatedEvent) {
+            const newBotAddress = botCreatedEvent.args.wallet;
+            console.log(chalk.green("   ✅ Bot created successfully! Address:"), chalk.bold(newBotAddress));
+            fs.writeFileSync("bot_address.txt", newBotAddress);
+        } else {
+            console.error(chalk.red("   Could not find BotCreated event in transaction receipt."));
+        }
+    } catch (error) {
+        console.error(chalk.red("\n❌ Error creating bot:"), error);
+    }
 }
 
 main().catch((error) => {
