@@ -9,6 +9,11 @@ import "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./interfaces/IOqiaBotFactory.sol";
 
+/**
+ * @title OqiaModuleRegistry
+ * @notice Registry for Oqia modules and licenses
+ * @dev Manages module registration, licensing, and royalties
+ */
 contract OqiaModuleRegistry is
     Initializable,
     ERC721Upgradeable,
@@ -19,18 +24,36 @@ contract OqiaModuleRegistry is
     UUPSUpgradeable
 {
     // --- Errors ---
+    /// @notice Thrown when a module is already registered
     error ModuleAlreadyRegistered();
+    /// @notice Thrown when a module is not registered
     error ModuleNotRegistered();
+    /// @notice Thrown when the module owner is invalid
     error InvalidModuleOwner();
+    /// @notice Thrown when the module address is invalid
     error InvalidModuleAddress();
+    /// @notice Thrown when the developer address is invalid
     error InvalidDeveloperAddress();
+    /// @notice Thrown when payment is incorrect
     error IncorrectPayment();
+    /// @notice Thrown when transfer fails
     error TransferFailed();
+    /// @notice Thrown when a zero address is used
     error ZeroAddress();
+    /// @notice Thrown when the factory is not set
     error FactoryNotSet();
+    /// @notice Thrown when a module is blacklisted
     error ModuleIsBlacklisted();
 
     // --- Structs ---
+    /**
+     * @notice Stores module information
+     * @param moduleAddress Address of the module
+     * @param developer Address of the developer
+     * @param royaltyBps Royalty basis points
+     * @param price Price of the module
+     * @param metadataURI Metadata URI for the module
+     */
     struct ModuleInfo {
         address moduleAddress;
         address developer;
@@ -40,13 +63,20 @@ contract OqiaModuleRegistry is
     }
 
     // --- State Variables ---
+    /// @notice Counter for license IDs
     uint256 private _licenseIdCounter;
+    /// @notice Counter for module IDs
     uint256 private _moduleIdCounter;
 
+    /// @notice Maps module IDs to ModuleInfo
     mapping(uint256 => ModuleInfo) public moduleInfoOf;
+    /// @notice Maps module addresses to module IDs
     mapping(address => uint256) public moduleIdOfAddress;
+    /// @notice Tracks blacklisted modules by ID
     mapping(uint256 => bool) public moduleBlacklist;
+    /// @notice Maps license IDs to module IDs
     mapping(uint256 => uint256) public licenseIdToModuleId;
+    /// @notice Tracks license count per owner and module
     mapping(address => mapping(uint256 => uint256)) public licenseCount; // owner => moduleId => count
 
     address public protocolTreasury;

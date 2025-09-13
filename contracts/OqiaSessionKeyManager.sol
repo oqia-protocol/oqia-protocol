@@ -7,25 +7,33 @@ import "./interfaces/IOqiaBotFactory.sol";
 
 /**
  * @title OqiaSessionKeyManager
- * @dev Manages ephemeral session keys for agent wallets with granular permissions
+ * @notice Manages ephemeral session keys for agent wallets with granular permissions
+ * @dev Provides session key authorization, revocation, and transaction execution for agent wallets
  */
 contract OqiaSessionKeyManager is Ownable, ReentrancyGuard {
     
+    /**
+     * @notice Stores session key data
+     * @param sessionKey Address of the session key
+     * @param allowedFunction Allowed function selector (0x00000000 for any)
+     * @param validUntil Expiry timestamp
+     * @param valueLimit Maximum value allowed
+     * @param valueUsed Value already used
+     * @param isActive Whether the session key is active
+     */
     struct SessionKey {
         address sessionKey;
-        bytes4 allowedFunction; // 0x00000000 for any function
+        bytes4 allowedFunction;
         uint256 validUntil;
         uint256 valueLimit;
         uint256 valueUsed;
         bool isActive;
     }
-    
-    // agentWallet => sessionKey => SessionKey data
+    /// @notice Maps agent wallets to their session keys
     mapping(address => mapping(address => SessionKey)) public sessionKeys;
-    
-    // agentWallet => array of active session keys
+    /// @notice Maps agent wallets to their active session key addresses
     mapping(address => address[]) public activeSessionKeys;
-    
+    /// @notice Reference to the bot factory contract
     IOqiaBotFactory public immutable botFactory;
     
     event SessionKeyAuthorized(

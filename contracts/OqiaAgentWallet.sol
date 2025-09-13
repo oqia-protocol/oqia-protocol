@@ -9,38 +9,61 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title OqiaAgentWallet
- * @dev Smart contract wallet for autonomous AI agents with module system and session keys
+ * @notice Smart contract wallet for autonomous AI agents with module system and session keys.
+ * @dev Supports module authorization and session key management for secure agent operations.
  */
 contract OqiaAgentWallet is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     
-    // Module authorization mapping
+    /// @notice Tracks authorized modules for the agent wallet
     mapping(address => bool) public authorizedModules;
     
     // Session key management
+    /**
+     * @notice Represents a session key with permissions and limits
+     * @param isActive Whether the session key is active
+     * @param validUntil Expiry timestamp
+     * @param valueLimit Maximum value allowed
+     * @param valueUsed Value already used
+     * @param allowedFunction Allowed function selector (0x00000000 for any)
+     */
     struct SessionKey {
         bool isActive;
         uint256 validUntil;
         uint256 valueLimit;
         uint256 valueUsed;
-        bytes4 allowedFunction; // 0x00000000 for any function
+        bytes4 allowedFunction;
     }
-    
+    /// @notice Maps session key addresses to SessionKey structs
     mapping(address => SessionKey) public sessionKeys;
+    /// @notice List of currently active session key addresses
     address[] public activeSessionKeys;
     
+    /// @notice Emitted when a module is authorized or deauthorized
     event ModuleAuthorized(address indexed module, bool authorized);
+    /// @notice Emitted when a session key is created
     event SessionKeyCreated(address indexed sessionKey, uint256 validUntil, uint256 valueLimit, bytes4 allowedFunction);
+    /// @notice Emitted when a session key is revoked
     event SessionKeyRevoked(address indexed sessionKey);
+    /// @notice Emitted when execution succeeds
     event ExecutionSuccess(address indexed target, uint256 value, bytes data);
+    /// @notice Emitted when execution fails
     event ExecutionFailure(address indexed target, uint256 value, bytes data, string reason);
+    /// @notice Emitted when the wallet receives ETH
     event Received(address indexed sender, uint256 value);
     
+    /// @notice Thrown when a module is not authorized
     error UnauthorizedModule();
+    /// @notice Thrown when a session key is not authorized
     error UnauthorizedSessionKey();
+    /// @notice Thrown when a session key is expired
     error SessionKeyExpired();
+    /// @notice Thrown when value limit is exceeded
     error ValueLimitExceeded();
+    /// @notice Thrown when a function is not allowed
     error FunctionNotAllowed();
+    /// @notice Thrown when execution fails
     error ExecutionFailed();
+    /// @notice Thrown when a session key is invalid
     error InvalidSessionKey();
     
     /// @custom:oz-upgrades-unsafe-allow constructor

@@ -11,7 +11,8 @@ import "./OqiaAgentWallet.sol";
 
 /**
  * @title OqiaBotFactory
- * @dev Factory contract for creating Oqia agent wallets with ERC721 ownership tokens
+ * @notice Factory contract for creating Oqia agent wallets with ERC721 ownership tokens.
+ * @dev Deploys agent wallets and mints ERC721 tokens representing ownership.
  */
 contract OqiaBotFactory is 
     Initializable, 
@@ -20,17 +21,25 @@ contract OqiaBotFactory is
     UUPSUpgradeable,
     ReentrancyGuardUpgradeable 
 {
+    /// @notice Counter for token IDs
     uint256 private _tokenIdCounter;
+    /// @notice Address of the agent wallet implementation contract
     address public agentWalletImplementation;
-    
+    /// @notice Maps token IDs to bot wallet addresses
     mapping(uint256 => address) public botWalletOf;
+    /// @notice Maps wallet addresses to token IDs
     mapping(address => uint256) public tokenOfWallet;
+    /// @notice Maps token IDs to their metadata URIs
     mapping(uint256 => string) private _tokenURIs;
     
+    /// @notice Emitted when a bot is created
     event BotCreated(uint256 indexed tokenId, address indexed owner, address wallet);
+    /// @notice Emitted when an agent is created
     event AgentCreated(uint256 indexed tokenId, address indexed owner, address agentWallet);
     
+    /// @notice Thrown when the owner address is invalid
     error InvalidOwner();
+    /// @notice Thrown when wallet creation fails
     error WalletCreationFailed();
     
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -38,12 +47,15 @@ contract OqiaBotFactory is
         _disableInitializers();
     }
     
+    /**
+     * @notice Initializes the factory contract
+     * @param _agentWalletImplementation The address of the agent wallet implementation
+     */
     function initialize(address _agentWalletImplementation) public initializer {
         __ERC721_init("Oqia Agent", "OQIA");
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
         __ReentrancyGuard_init();
-        
         agentWalletImplementation = _agentWalletImplementation;
         _tokenIdCounter = 1; // Start from 1
     }

@@ -21,22 +21,45 @@ interface IERC20 {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
+/**
+ * @title SimpleArbitrageModule
+ * @notice Module for executing simple arbitrage using Uniswap V2
+ * @dev Requires license and Safe authorization
+ */
 contract SimpleArbitrageModule {
+    /// @notice Owner of the module
     address public immutable owner;
+    /// @notice Uniswap V2 router interface
     IUniswapV2Router public immutable uniswapRouter;
+    /// @notice Module registry interface
     IOqiaModuleRegistry public immutable moduleRegistry;
+    /// @notice Module ID for license checks
     uint256 public immutable moduleId;
 
+    /**
+     * @notice Restricts access to the authorized Safe
+     * @param safe The Safe address
+     */
     modifier onlySafe(address safe) {
         require(msg.sender == safe, "OQIA: Caller is not the authorized Safe");
         _;
     }
 
+    /**
+     * @notice Requires a valid module license for the user
+     * @param user The user address
+     */
     modifier requiresLicense(address user) {
         require(moduleRegistry.hasModuleLicense(user, moduleId), "OQIA: No valid license for module");
         _;
     }
 
+    /**
+     * @notice Constructs the arbitrage module
+     * @param _router Uniswap V2 router address
+     * @param _registry Module registry address
+     * @param _moduleId Module ID
+     */
     constructor(address _router, address _registry, uint256 _moduleId) {
         owner = msg.sender;
         uniswapRouter = IUniswapV2Router(_router);
@@ -44,6 +67,13 @@ contract SimpleArbitrageModule {
         moduleId = _moduleId;
     }
 
+    /**
+     * @notice Executes arbitrage between two tokens
+     * @param safe The Safe address
+     * @param tokenA The input token address
+     * @param tokenB The output token address
+     * @param amountIn Amount of tokenA to swap
+     */
     function executeArbitrage(address safe, address tokenA, address tokenB, uint256 amountIn) external onlySafe(safe) requiresLicense(safe) {
         if (amountIn == 0) {
             return;
