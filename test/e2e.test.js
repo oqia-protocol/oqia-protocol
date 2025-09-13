@@ -58,9 +58,10 @@ describe("End-to-End Test: Autonomous Agent Execution", function () {
         this.timeout(60000);
 
         const factory = await ethers.getContractAt("OqiaBotFactory", deployments.OqiaBotFactory);
-        const tx = await factory.connect(deployer).createBot(deployer.address);
+        const fee = await factory.agentCreationFee();
+        const tx = await factory.connect(deployer).createBot(deployer.address, { value: fee });
         const receipt = await tx.wait();
-        const botCreatedEvent = receipt.logs.find(e => factory.interface.parseLog(e)?.name === "BotCreated");
+        const botCreatedEvent = receipt.logs.find(log => log.fragment && log.fragment.name === "BotCreated");
         const botAddress = botCreatedEvent.args.wallet;
         const agentWallet = await ethers.getContractAt("OqiaAgentWallet", botAddress);
 

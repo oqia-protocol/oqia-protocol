@@ -27,3 +27,6 @@ This file will be updated as further changes are made in this session.
 
 ## Update (2025-09-13T12:35:44.509Z)
 Created blank files for architecture planning: docs/ARCHITECTURE.md, scripts/grant_session.js, and added BLANK_FILE_MARKER.txt to docs/ and scripts/. Improved file tree for professional organization.
+
+## Update (2025-09-13T13:38:48.779Z)
+Implemented and tested the AgentLinker.sol contract. Also fixed several pre-existing failing tests related to bot creation fees.

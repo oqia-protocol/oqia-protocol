@@ -22,7 +22,8 @@ describe("Bot Creation", function () {
 
     it("Should emit a BotCreated event when a new bot is created", async function () {
         const botOwner = owner.address;
-        await expect(factoryProxy.createBot(botOwner))
+        const fee = await factoryProxy.agentCreationFee();
+        await expect(factoryProxy.createBot(botOwner, { value: fee }))
             .to.emit(factoryProxy, "BotCreated");
     });
 });
