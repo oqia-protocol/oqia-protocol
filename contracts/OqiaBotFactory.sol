@@ -2,61 +2,37 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts/proxy/Clones.sol";
 import "./OqiaAgentWallet.sol";
 
-/// @notice This version uses the Clones library to deploy lightweight proxy wallets,
-/// removing the dependency on external Safe contracts for deployment.
 contract OqiaBotFactory is Initializable, ERC721Upgradeable, OwnableUpgradeable, UUPSUpgradeable {
+    uint256 private _tokenCounter;
+    mapping(uint256 => address) public agentWallets;
 
-    // --- State Variables ---
-    uint256 private _tokenIdCounter;
-    address public agentWalletImplementation;
+    event AgentCreated(uint256 indexed tokenId, address indexed agentWallet, address indexed owner);
 
-    mapping(uint256 => address) public botWalletOf;
-    mapping(address => uint256) public tokenOfWallet;
-
-    // --- Events ---
-    event BotCreated(uint256 indexed tokenId, address indexed owner, address wallet);
-
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
-    }
-
-    /// @notice Initializes the contract.
-    /// @param _agentWalletImplementation The address of the master OqiaAgentWallet implementation.
-    function initialize(address _agentWalletImplementation) public initializer {
-        __ERC721_init("Oqia Bot NFT", "OQIA");
-        __Ownable_init(msg.sender);
+    function initialize(string memory name, string memory symbol, address initialOwner) public initializer {
+        __ERC721_init(name, symbol);
+        __Ownable_init(initialOwner);
         __UUPSUpgradeable_init();
-        agentWalletImplementation = _agentWalletImplementation;
+        _tokenCounter = 0;
     }
 
-    /// @dev Required by UUPS pattern. Restricts upgrade authorization to the owner.
+    function mintAgent(address agentOwner) public onlyOwner returns (uint256) {
+        uint256 tokenId = _tokenCounter;
+        _safeMint(agentOwner, tokenId);
+
+        OqiaAgentWallet agentWallet = new OqiaAgentWallet();
+        agentWallet.initialize(agentOwner);
+        agentWallets[tokenId] = address(agentWallet);
+
+        emit AgentCreated(tokenId, address(agentWallet), agentOwner);
+
+        _tokenCounter++;
+        return tokenId;
+    }
+
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
-    /// @notice Creates a new agent by deploying a clone of the OqiaAgentWallet
-    /// and minting an NFT that represents ownership.
-    /// @param botOwner The address that will own the new NFT and the wallet.
-    function createBot(address botOwner) external returns (address proxy) {
-        require(botOwner != address(0), "Invalid owner");
-        uint256 tokenId = ++_tokenIdCounter;
-        bytes32 salt = bytes32(tokenId);
-
-        // Deploy a new lightweight, clone proxy of the agent wallet
-        proxy = Clones.cloneDeterministic(agentWalletImplementation, salt);
-
-        // Initialize the new clone, setting the botOwner as its owner
-        OqiaAgentWallet(payable(proxy)).initialize(botOwner);
-
-        botWalletOf[tokenId] = proxy;
-        tokenOfWallet[proxy] = tokenId;
-        _safeMint(botOwner, tokenId);
-
-        emit BotCreated(tokenId, botOwner, proxy);
-    }
 }

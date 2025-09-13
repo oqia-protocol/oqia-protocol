@@ -1,46 +1,55 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "./modules/IOqiaModule.sol";
 
-contract OqiaAgentWallet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+contract OqiaAgentWallet is Initializable, OwnableUpgradeable {
+    mapping(bytes4 => address) public installedModules;
 
-    mapping(address => bool) public isModuleAuthorized;
+    event ModuleInstalled(bytes4 indexed signature, address indexed module);
+    event ModuleUninstalled(bytes4 indexed signature);
+    event Received(address indexed sender, uint256 value);
 
-    event ModuleAuthorized(address indexed module, bool isAuthorized);
-
-    modifier onlyAuthorized() {
-        require(owner() == msg.sender || isModuleAuthorized[msg.sender], "Not Owner or Authorized Module");
-        _;
-    }
-
-    // Note: avoid defining a constructor to keep the contract upgrade-safe for OpenZeppelin upgrades.
-    // Initializer sets the owner to the provided address.
     function initialize(address initialOwner) public initializer {
-        // Some OpenZeppelin OwnableUpgradeable versions expect an address in __Ownable_init
-        // so pass the initialOwner directly to match the imported OZ version.
         __Ownable_init(initialOwner);
-        __UUPSUpgradeable_init();
     }
 
-    function authorizeModule(address module, bool isAuthorized) external onlyOwner {
-        isModuleAuthorized[module] = isAuthorized;
-        emit ModuleAuthorized(module, isAuthorized);
+    receive() external payable {
+        emit Received(msg.sender, msg.value);
     }
 
-    // Backwards-compatible helper used by tests (alias)
+    function installModule(bytes4 signature, address module) external onlyOwner {
+        installedModules[signature] = module;
+        emit ModuleInstalled(signature, module);
+    }
+
+    function uninstallModule(bytes4 signature) external onlyOwner {
+        address module = installedModules[signature];
+        require(module != address(0), "Module not installed");
+        delete installedModules[signature];
+        emit ModuleUninstalled(signature);
+    }
+
+    function executeModule(bytes4 signature, bytes calldata data) external returns (bytes memory) {
+        address module = installedModules[signature];
+        require(module != address(0), "Module not installed");
+
+        return IOqiaModule(module).execute(msg.sender, data);
+    }
+
+    function executeCall(address to, uint256 value, bytes calldata data) external onlyOwner returns (bool, bytes memory) {
+        (bool success, bytes memory result) = to.call{value: value}(data);
+        return (success, result);
+    }
+
+    function getBalance() public view returns (uint256) {
+        return address(this).balance;
+    }
+
     function approveModule(address token, address module, uint256 /*amount*/) external onlyOwner {
-        // For this wallet, approving a module means marking it authorized
-        isModuleAuthorized[module] = true;
-        emit ModuleAuthorized(module, true);
+        // This function is a placeholder for a planned approval mechanism.
+        // It will be implemented in a future update.
     }
-
-    function execute(address to, uint256 value, bytes calldata data) external onlyAuthorized returns (bool success, bytes memory result) {
-        (success, result) = to.call{value: value}(data);
-    }
-
-    receive() external payable {}
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }
