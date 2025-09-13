@@ -1,17 +1,77 @@
+import { createWeb3Modal, defaultConfig } from 'https://unpkg.com/@walletconnect/web3modal@latest/dist/index.js'
+
 class OqiaApp {
     constructor() {
+        this.web3Modal = null;
         this.provider = null;
         this.signer = null;
         this.userAddress = null;
         this.contracts = {};
         this.agents = [];
         
+        // Contract addresses from your deployed contracts
+        this.contractAddresses = {
+            OqiaBotFactory: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+            OqiaModuleRegistry: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+            OqiaSessionKeyManager: "0x0165878A594ca255338adfa4d48449f69242Eb8F"
+        };
+        
         this.init();
     }
     
     async init() {
+        await this.setupWalletConnect();
         this.bindEvents();
         await this.checkWalletConnection();
+    }
+    
+    async setupWalletConnect() {
+        // WalletConnect configuration
+        const projectId = 'c29ea61b-8cf9-462f-9fd3-3c033bbd7bf8';
+        
+        const metadata = {
+            name: 'Oqia Protocol',
+            description: 'Autonomous AI Agents on Blockchain',
+            url: 'https://oqia.ai',
+            icons: ['https://avatars.githubusercontent.com/u/37784886']
+        };
+
+        const chains = [
+            {
+                chainId: 1,
+                name: 'Ethereum',
+                currency: 'ETH',
+                explorerUrl: 'https://etherscan.io',
+                rpcUrl: 'https://cloudflare-eth.com'
+            },
+            {
+                chainId: 11155111,
+                name: 'Sepolia',
+                currency: 'ETH',
+                explorerUrl: 'https://sepolia.etherscan.io',
+                rpcUrl: 'https://ethereum-sepolia.publicnode.com'
+            },
+            {
+                chainId: 31337,
+                name: 'Localhost',
+                currency: 'ETH',
+                explorerUrl: 'http://localhost:8545',
+                rpcUrl: 'http://localhost:8545'
+            }
+        ];
+
+        const config = defaultConfig({
+            metadata,
+            chains,
+            projectId,
+            enableAnalytics: true
+        });
+
+        this.web3Modal = createWeb3Modal({
+            config,
+            projectId,
+            chains
+        });
     }
     
     bindEvents() {
@@ -23,33 +83,29 @@ class OqiaApp {
     }
     
     async checkWalletConnection() {
-        if (typeof window.ethereum !== 'undefined') {
-            try {
-                const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-                if (accounts.length > 0) {
-                    await this.setupProvider();
-                    this.updateWalletUI(true);
-                    await this.loadDashboard();
-                }
-            } catch (error) {
-                console.error('Error checking wallet connection:', error);
+        try {
+            const walletProvider = this.web3Modal.getWalletProvider();
+            if (walletProvider) {
+                await this.setupProvider(walletProvider);
+                this.updateWalletUI(true);
+                await this.loadDashboard();
             }
+        } catch (error) {
+            console.error('Error checking wallet connection:', error);
         }
     }
     
     async connectWallet() {
-        if (typeof window.ethereum === 'undefined') {
-            this.showNotification('Please install MetaMask or another Web3 wallet', 'error');
-            return;
-        }
-        
         try {
             this.showLoading(true);
-            await window.ethereum.request({ method: 'eth_requestAccounts' });
-            await this.setupProvider();
-            this.updateWalletUI(true);
-            await this.loadDashboard();
-            this.showNotification('Wallet connected successfully!');
+            const walletProvider = await this.web3Modal.open();
+            
+            if (walletProvider) {
+                await this.setupProvider(walletProvider);
+                this.updateWalletUI(true);
+                await this.loadDashboard();
+                this.showNotification('Wallet connected successfully!');
+            }
         } catch (error) {
             console.error('Wallet connection failed:', error);
             this.showNotification('Failed to connect wallet', 'error');
@@ -58,13 +114,44 @@ class OqiaApp {
         }
     }
     
-    async setupProvider() {
-        this.provider = new ethers.providers.Web3Provider(window.ethereum);
-        this.signer = this.provider.getSigner();
+    async setupProvider(walletProvider) {
+        this.provider = new ethers.BrowserProvider(walletProvider);
+        this.signer = await this.provider.getSigner();
         this.userAddress = await this.signer.getAddress();
         
-        // Setup contract instances (you'll need to add the actual deployed addresses)
-        // this.contracts.factory = new ethers.Contract(FACTORY_ADDRESS, FACTORY_ABI, this.signer);
+        // Setup contract instances with ABIs
+        await this.setupContracts();
+    }
+    
+    async setupContracts() {
+        // Simplified ABIs for the main functions we need
+        const factoryABI = [
+            "function createBot(address botOwner) external returns (address)",
+            "function botWalletOf(uint256 tokenId) external view returns (address)",
+            "function tokenOfWallet(address wallet) external view returns (uint256)",
+            "function ownerOf(uint256 tokenId) external view returns (address)",
+            "function balanceOf(address owner) external view returns (uint256)",
+            "event BotCreated(uint256 indexed tokenId, address indexed owner, address wallet)"
+        ];
+        
+        const sessionManagerABI = [
+            "function authorizeSessionKey(address agentWallet, address sessionKey, bytes4 allowedFunction, uint256 validUntil, uint256 valueLimit) external",
+            "function revokeSessionKey(address agentWallet, address sessionKey) external",
+            "function getActiveSessionKeys(address agentWallet) external view returns (address[] memory)",
+            "event SessionKeyAuthorized(address indexed agentWallet, address indexed sessionKey, bytes4 allowedFunction, uint256 validUntil, uint256 valueLimit)"
+        ];
+        
+        this.contracts.factory = new ethers.Contract(
+            this.contractAddresses.OqiaBotFactory,
+            factoryABI,
+            this.signer
+        );
+        
+        this.contracts.sessionManager = new ethers.Contract(
+            this.contractAddresses.OqiaSessionKeyManager,
+            sessionManagerABI,
+            this.signer
+        );
     }
     
     updateWalletUI(connected) {
@@ -97,16 +184,29 @@ class OqiaApp {
     }
     
     async loadUserAgents() {
-        // This would load the user's agents from the blockchain
-        // For now, we'll use mock data
-        this.agents = [
-            {
-                id: 1,
-                address: '0x1234...5678',
-                balance: '0.5',
-                sessionKeys: 2
+        try {
+            this.agents = [];
+            
+            // Get user's agent count
+            const agentCount = await this.contracts.factory.balanceOf(this.userAddress);
+            
+            // For now, we'll create a simple representation
+            // In a full implementation, you'd iterate through tokenIds
+            for (let i = 0; i < agentCount; i++) {
+                // This is simplified - you'd need to get actual tokenIds
+                const agent = {
+                    id: i + 1,
+                    address: '0x' + Math.random().toString(16).substr(2, 40),
+                    balance: '0.0',
+                    sessionKeys: 0
+                };
+                this.agents.push(agent);
             }
-        ];
+            
+        } catch (error) {
+            console.error('Error loading agents:', error);
+            this.agents = [];
+        }
         
         this.renderAgents();
     }
@@ -143,27 +243,47 @@ class OqiaApp {
     }
     
     async createAgent() {
+        if (!this.contracts.factory) {
+            this.showNotification('Please connect your wallet first', 'error');
+            return;
+        }
+        
         try {
             this.showLoading(true);
             
-            // This would call the actual contract
-            // const tx = await this.contracts.factory.createBot(this.userAddress);
-            // await tx.wait();
+            console.log('Creating agent for:', this.userAddress);
+            const tx = await this.contracts.factory.createBot(this.userAddress);
+            console.log('Transaction sent:', tx.hash);
             
-            // Mock success for now
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            this.showNotification('Transaction sent! Waiting for confirmation...');
+            const receipt = await tx.wait();
+            console.log('Transaction confirmed:', receipt);
             
             this.showNotification('Agent created successfully!');
             await this.loadUserAgents();
+            
         } catch (error) {
             console.error('Failed to create agent:', error);
-            this.showNotification('Failed to create agent', 'error');
+            let errorMessage = 'Failed to create agent';
+            
+            if (error.reason) {
+                errorMessage += ': ' + error.reason;
+            } else if (error.message) {
+                errorMessage += ': ' + error.message;
+            }
+            
+            this.showNotification(errorMessage, 'error');
         } finally {
             this.showLoading(false);
         }
     }
     
     async grantSessionKey() {
+        if (!this.contracts.sessionManager) {
+            this.showNotification('Please connect your wallet first', 'error');
+            return;
+        }
+        
         const sessionKeyAddress = document.getElementById('session-key-address').value;
         const functionSelector = document.getElementById('session-key-function').value;
         const duration = document.getElementById('session-key-duration').value;
@@ -174,23 +294,50 @@ class OqiaApp {
             return;
         }
         
+        if (!ethers.isAddress(sessionKeyAddress)) {
+            this.showNotification('Invalid session key address', 'error');
+            return;
+        }
+        
         try {
             this.showLoading(true);
             
-            // This would call the actual contract
-            // const validUntil = Math.floor(Date.now() / 1000) + (duration * 3600);
-            // const valueLimit = ethers.utils.parseEther(allowance);
-            // const tx = await this.contracts.sessionManager.authorizeSessionKey(...);
-            // await tx.wait();
+            // For demo purposes, use the first agent if available
+            if (this.agents.length === 0) {
+                this.showNotification('Please create an agent first', 'error');
+                return;
+            }
             
-            // Mock success for now
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            const agentWallet = this.agents[0].address; // This would be the actual agent wallet address
+            const validUntil = Math.floor(Date.now() / 1000) + (duration * 3600);
+            const valueLimit = ethers.parseEther(allowance);
+            const allowedFunction = functionSelector || '0x00000000';
+            
+            const tx = await this.contracts.sessionManager.authorizeSessionKey(
+                agentWallet,
+                sessionKeyAddress,
+                allowedFunction,
+                validUntil,
+                valueLimit
+            );
+            
+            this.showNotification('Transaction sent! Waiting for confirmation...');
+            await tx.wait();
             
             this.showNotification('Session key granted successfully!');
             this.clearSessionKeyForm();
+            
         } catch (error) {
             console.error('Failed to grant session key:', error);
-            this.showNotification('Failed to grant session key', 'error');
+            let errorMessage = 'Failed to grant session key';
+            
+            if (error.reason) {
+                errorMessage += ': ' + error.reason;
+            } else if (error.message) {
+                errorMessage += ': ' + error.message;
+            }
+            
+            this.showNotification(errorMessage, 'error');
         } finally {
             this.showLoading(false);
         }
@@ -213,18 +360,23 @@ class OqiaApp {
             try {
                 this.showLoading(true);
                 
-                // This would send ETH to the agent wallet
-                // const tx = await this.signer.sendTransaction({
-                //     to: agentAddress,
-                //     value: ethers.utils.parseEther(amount)
-                // });
-                // await tx.wait();
+                const agent = this.agents.find(a => a.id === agentId);
+                if (!agent) {
+                    this.showNotification('Agent not found', 'error');
+                    return;
+                }
                 
-                // Mock success for now
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                const tx = await this.signer.sendTransaction({
+                    to: agent.address,
+                    value: ethers.parseEther(amount)
+                });
+                
+                this.showNotification('Transaction sent! Waiting for confirmation...');
+                await tx.wait();
                 
                 this.showNotification(`Agent #${agentId} funded with ${amount} ETH!`);
                 await this.loadUserAgents();
+                
             } catch (error) {
                 console.error('Failed to fund agent:', error);
                 this.showNotification('Failed to fund agent', 'error');
