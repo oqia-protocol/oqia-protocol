@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/token/common/ERC2981.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./interfaces/IOqiaBotFactory.sol";
 
 contract OqiaModuleRegistry is
-    ERC721,
-    Ownable,
-    Pausable,
-    ReentrancyGuard,
-    ERC2981
+    Initializable,
+    ERC721Upgradeable,
+    OwnableUpgradeable,
+    PausableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    ERC2981Upgradeable,
+    UUPSUpgradeable
 {
     // --- Errors ---
     error ModuleAlreadyRegistered();
@@ -64,11 +67,18 @@ contract OqiaModuleRegistry is
         _;
     }
 
-    // --- Constructor ---
-    constructor(string memory name_, string memory symbol_, address _protocolTreasury, address initialOwner) 
-        ERC721(name_, symbol_) 
-        Ownable(initialOwner)
+    // --- Initializer ---
+    function initialize(string memory name_, string memory symbol_, address _protocolTreasury, address initialOwner) 
+        public 
+        initializer 
     {
+        __ERC721_init(name_, symbol_);
+        __Ownable_init(initialOwner);
+        __Pausable_init();
+        __ReentrancyGuard_init();
+        __ERC2981_init();
+        __UUPSUpgradeable_init();
+
         if (_protocolTreasury == address(0)) revert ZeroAddress();
         protocolTreasury = _protocolTreasury;
     }
@@ -147,7 +157,7 @@ contract OqiaModuleRegistry is
         return licenseCount[botOwner][moduleId] > 0;
     }
 
-    function tokenURI(uint256 licenseId) public view override returns (string memory) {
+    function tokenURI(uint256 licenseId) public view override(ERC721Upgradeable) returns (string memory) {
         _requireOwned(licenseId);
         uint256 moduleId = licenseIdToModuleId[licenseId];
         if (moduleBlacklist[moduleId]) revert ModuleIsBlacklisted();
@@ -157,7 +167,7 @@ contract OqiaModuleRegistry is
     function royaltyInfo(uint256 licenseId, uint256 _salePrice)
         public
         view
-        override
+        override(ERC2981Upgradeable)
         returns (address receiver, uint256 royaltyAmount)
     {
         _requireOwned(licenseId);
@@ -172,7 +182,7 @@ contract OqiaModuleRegistry is
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(ERC721, ERC2981)
+        override(ERC721Upgradeable, ERC2981Upgradeable)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
@@ -180,7 +190,7 @@ contract OqiaModuleRegistry is
 
     function _update(address to, uint256 tokenId, address auth)
         internal
-        override
+        override(ERC721Upgradeable)
         returns (address)
     {
         uint256 moduleId = licenseIdToModuleId[tokenId];
@@ -203,4 +213,6 @@ contract OqiaModuleRegistry is
     function unpause() external onlyOwner {
         _unpause();
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }

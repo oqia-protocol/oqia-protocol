@@ -9,7 +9,7 @@ describe("OqiaModuleRegistry", function () {
         const OqiaModuleRegistry = await ethers.getContractFactory("OqiaModuleRegistry");
         const registryProxy = await upgrades.deployProxy(
             OqiaModuleRegistry,
-            ["Oqia Module License", "OML", protocolTreasury.address],
+            ["Oqia Module License", "OML", protocolTreasury.address, owner.address],
             { initializer: "initialize", kind: "uups" }
         );
         await registryProxy.waitForDeployment();

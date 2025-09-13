@@ -3,13 +3,19 @@ const { ethers, upgrades } = require("hardhat");
 
 describe("OqiaBotFactory", function () {
     let OqiaBotFactory, botFactory, owner, otherAccount;
+    let agentWalletImplementation;
 
     beforeEach(async function () {
         [owner, otherAccount] = await ethers.getSigners();
 
+        // Deploy the OqiaAgentWallet implementation contract
+        const OqiaAgentWallet = await ethers.getContractFactory("OqiaAgentWallet");
+        agentWalletImplementation = await OqiaAgentWallet.deploy();
+        await agentWalletImplementation.waitForDeployment();
+
         // Deploy the OqiaBotFactory contract as a proxy
         OqiaBotFactory = await ethers.getContractFactory("OqiaBotFactory");
-        botFactory = await upgrades.deployProxy(OqiaBotFactory, ["OqiaBot", "OQB", owner.address], { kind: 'uups' });
+        botFactory = await upgrades.deployProxy(OqiaBotFactory, [agentWalletImplementation.target], { kind: 'uups' });
         await botFactory.waitForDeployment();
     });
 
@@ -19,8 +25,8 @@ describe("OqiaBotFactory", function () {
         });
 
         it("Should set the correct name and symbol for the ERC721 token", async function () {
-            expect(await botFactory.name()).to.equal("OqiaBot");
-            expect(await botFactory.symbol()).to.equal("OQB");
+            expect(await botFactory.name()).to.equal("Oqia Agent");
+            expect(await botFactory.symbol()).to.equal("OQIA");
         });
     });
 

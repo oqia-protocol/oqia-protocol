@@ -15,6 +15,9 @@ contract SwapModule is IOqiaModule {
     function execute(address from, bytes calldata data) external override returns (bytes memory) {
         (address tokenIn, address tokenOut, uint256 amountIn) = abi.decode(data, (address, address, uint256));
 
+        // Transfer the tokens from the wallet to this module
+        IERC20(tokenIn).transferFrom(from, address(this), amountIn);
+
         // Approve the router to spend the tokens
         IERC20(tokenIn).approve(address(uniswapRouter), amountIn);
 

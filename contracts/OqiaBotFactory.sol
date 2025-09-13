@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -48,7 +48,7 @@ contract OqiaBotFactory is
         _tokenIdCounter = 1; // Start from 1
     }
     
-    function createBot(address botOwner) external onlyOwner nonReentrant returns (address) {
+    function createBot(address botOwner) public onlyOwner nonReentrant returns (address) {
         if (botOwner == address(0)) revert InvalidOwner();
         
         uint256 tokenId = _tokenIdCounter;
@@ -74,7 +74,7 @@ contract OqiaBotFactory is
     }
     
     // Legacy function for backward compatibility
-    function mintAgent(address to) external onlyOwner returns (uint256) {
+    function mintAgent(address to) public onlyOwner returns (uint256) {
         address wallet = createBot(to);
         return tokenOfWallet[wallet];
     }

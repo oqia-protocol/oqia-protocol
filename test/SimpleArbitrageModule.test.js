@@ -22,15 +22,15 @@ describe("SimpleArbitrageModule (Refactored)", function () {
 
         // Deploy Registry and link it to the factory
         const OqiaModuleRegistry = await ethers.getContractFactory("OqiaModuleRegistry");
-        mockRegistry = await upgrades.deployProxy(OqiaModuleRegistry, ["Test", "TEST", deployer.address]);
+        mockRegistry = await upgrades.deployProxy(OqiaModuleRegistry, ["Test", "TEST", deployer.address, deployer.address]);
         await mockRegistry.waitForDeployment();
         await mockRegistry.setBotFactoryAddress(factory.target);
 
         // Deploy Mock ERC20s
         const MockERC20Factory = await ethers.getContractFactory("MockERC20");
-        mockERC20A = await MockERC20Factory.deploy("Token A", "TKA");
+        mockERC20A = await MockERC20Factory.deploy("Token A", "TKA", 0);
         await mockERC20A.waitForDeployment();
-        mockERC20B = await MockERC20Factory.deploy("Token B", "TKB");
+        mockERC20B = await MockERC20Factory.deploy("Token B", "TKB", 0);
         await mockERC20B.waitForDeployment();
 
         // Deploy Mock Uniswap Router and fund it

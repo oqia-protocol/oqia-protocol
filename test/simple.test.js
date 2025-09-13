@@ -13,7 +13,7 @@ describe("Simple Interaction Test", function () {
 
         // Deploy Mock ERC20
         const MockERC20 = await ethers.getContractFactory("MockERC20");
-        token = await MockERC20.deploy("Token A", "TKA");
+        token = await MockERC20.deploy("Token A", "TKA", 0);
         await token.waitForDeployment();
 
     // Deploy OqiaAgentWallet as an upgradeable proxy using initializer(initialOwner)

@@ -25,7 +25,7 @@ describe("End-to-End Test: Autonomous Agent Execution", function () {
         deployments.OqiaBotFactory = factoryProxy.target;
 
         const OqiaModuleRegistry = await ethers.getContractFactory("OqiaModuleRegistry");
-        const registryProxy = await upgrades.deployProxy(OqiaModuleRegistry, ["Test", "TEST", deployer.address]);
+        const registryProxy = await upgrades.deployProxy(OqiaModuleRegistry, ["Test", "TEST", deployer.address, deployer.address]);
         await registryProxy.waitForDeployment();
         deployments.OqiaModuleRegistry = registryProxy.target;
         await registryProxy.connect(deployer).setBotFactoryAddress(deployments.OqiaBotFactory);
@@ -41,10 +41,10 @@ describe("End-to-End Test: Autonomous Agent Execution", function () {
         deployments.SimpleArbitrageModule = arbitrageModule.target;
 
         const MockERC20 = await ethers.getContractFactory("MockERC20");
-        const tokenA = await MockERC20.deploy("Token A", "TKA");
+        const tokenA = await MockERC20.deploy("Token A", "TKA", 0);
         await tokenA.waitForDeployment();
         deployments.MockERC20A = tokenA.target;
-        const tokenB = await MockERC20.deploy("Token B", "TKB");
+        const tokenB = await MockERC20.deploy("Token B", "TKB", 0);
         await tokenB.waitForDeployment();
         deployments.MockERC20B = tokenB.target;
 
