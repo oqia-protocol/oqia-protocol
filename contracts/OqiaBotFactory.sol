@@ -6,6 +6,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "./OqiaAgentWallet.sol";
 
@@ -19,7 +20,8 @@ contract OqiaBotFactory is
     ERC721Upgradeable, 
     OwnableUpgradeable, 
     UUPSUpgradeable,
-    ReentrancyGuardUpgradeable 
+    ReentrancyGuardUpgradeable,
+    PausableUpgradeable
 {
     /// @notice Fee required to create a new agent
     uint256 public agentCreationFee;
@@ -27,6 +29,8 @@ contract OqiaBotFactory is
     uint96 public royaltyBps;
     /// @notice Address that receives fees and royalties
     address public feeRecipient;
+
+    string public version;
 
     /// @notice Emitted when agent creation fee is updated
     event AgentCreationFeeUpdated(uint256 newFee);
@@ -73,14 +77,20 @@ contract OqiaBotFactory is
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
         __ReentrancyGuard_init();
+        __Pausable_init();
         agentWalletImplementation = _agentWalletImplementation;
         _tokenIdCounter = 1; // Start from 1
         agentCreationFee = 0.001 ether;
         royaltyBps = 50; // 0.5%
         feeRecipient = msg.sender;
+        version = "1";
+    }
+
+    function reinitialize(uint256 _version) public reinitializer(2) {
+        version = string(abi.encodePacked(_toString(_version)));
     }
     
-    function createBot(address botOwner) external payable onlyOwner nonReentrant returns (address) {
+    function createBot(address botOwner) external payable onlyOwner nonReentrant whenNotPaused returns (address) {
         return _createBot(botOwner, msg.value);
     }
 
@@ -114,9 +124,17 @@ contract OqiaBotFactory is
     }
     
     // Legacy function for backward compatibility
-    function mintAgent(address to) public payable onlyOwner returns (uint256) {
+    function mintAgent(address to) public payable onlyOwner whenNotPaused returns (uint256) {
         address wallet = _createBot(to, msg.value);
         return tokenOfWallet[wallet];
+    }
+
+    function pause() public onlyOwner {
+        _pause();
+    }
+
+    function unpause() public onlyOwner {
+        _unpause();
     }
     
     function tokenURI(uint256 tokenId) public view override returns (string memory) {

@@ -50,7 +50,6 @@ describe("AgentLinker", function () {
         beforeEach(async function () {
             const tx = await agentLinker.createConnection(agentA.address, agentB.address, connectionType);
             const receipt = await tx.wait();
-            // Manually find the event in the logs
             const eventFragment = agentLinker.interface.getEvent("ConnectionCreated");
             const eventTopic = eventFragment.topicHash;
             const log = receipt.logs.find(l => l.topics[0] === eventTopic);
@@ -59,7 +58,7 @@ describe("AgentLinker", function () {
         });
 
         it("Should deactivate an active connection", async function () {
-            await expect(agentLinker.toggleConnection(connectionId))
+            await expect(agentLinker.connect(agentA).toggleConnection(connectionId))
                 .to.emit(agentLinker, "ConnectionDeactivated");
 
             const connection = await agentLinker.connections(connectionId);
@@ -67,8 +66,8 @@ describe("AgentLinker", function () {
         });
 
         it("Should activate an inactive connection", async function () {
-            await agentLinker.toggleConnection(connectionId); // Deactivate first
-            await expect(agentLinker.toggleConnection(connectionId))
+            await agentLinker.connect(agentB).toggleConnection(connectionId);
+            await expect(agentLinker.connect(agentA).toggleConnection(connectionId))
                 .to.emit(agentLinker, "ConnectionActivated");
 
             const connection = await agentLinker.connections(connectionId);
@@ -79,6 +78,11 @@ describe("AgentLinker", function () {
             const invalidConnectionId = ethers.encodeBytes32String("invalid");
             await expect(agentLinker.toggleConnection(invalidConnectionId))
                 .to.be.revertedWithCustomError(agentLinker, "ConnectionDoesNotExist");
+        });
+
+        it("Should revert if a non-participant tries to toggle the connection", async function () {
+            await expect(agentLinker.connect(otherAccount).toggleConnection(connectionId))
+                .to.be.revertedWithCustomError(agentLinker, "UnauthorizedToggler");
         });
     });
 

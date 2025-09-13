@@ -8,12 +8,10 @@ describe("OqiaBotFactory", function () {
     beforeEach(async function () {
         [owner, otherAccount] = await ethers.getSigners();
 
-        // Deploy the OqiaAgentWallet implementation contract
         const OqiaAgentWallet = await ethers.getContractFactory("OqiaAgentWallet");
         agentWalletImplementation = await OqiaAgentWallet.deploy();
         await agentWalletImplementation.waitForDeployment();
 
-        // Deploy the OqiaBotFactory contract as a proxy
         OqiaBotFactory = await ethers.getContractFactory("OqiaBotFactory");
         botFactory = await upgrades.deployProxy(OqiaBotFactory, [agentWalletImplementation.target], { kind: 'uups' });
         await botFactory.waitForDeployment();
@@ -27,6 +25,69 @@ describe("OqiaBotFactory", function () {
         it("Should set the correct name and symbol for the ERC721 token", async function () {
             expect(await botFactory.name()).to.equal("Oqia Agent");
             expect(await botFactory.symbol()).to.equal("OQIA");
+        });
+    });
+
+    describe("Supports Interface", function() {
+        it("Should support the ERC721 and ERC2981 interfaces", async function () {
+            const erc721InterfaceId = "0x80ac58cd";
+            const erc2981InterfaceId = "0x2a55205a";
+            expect(await botFactory.supportsInterface(erc721InterfaceId)).to.be.true;
+            expect(await botFactory.supportsInterface(erc2981InterfaceId)).to.be.true;
+        });
+    });
+
+    describe("Pausable", function() {
+        it("Should pause and unpause the contract", async function () {
+            const fee = await botFactory.agentCreationFee();
+
+            await botFactory.connect(owner).pause();
+            expect(await botFactory.paused()).to.be.true;
+
+            await expect(
+                botFactory.connect(owner).createBot(otherAccount.address, { value: fee })
+            ).to.be.revertedWithCustomError(botFactory, "EnforcedPause");
+
+            await expect(
+                botFactory.connect(owner).mintAgent(otherAccount.address, { value: fee })
+            ).to.be.revertedWithCustomError(botFactory, "EnforcedPause");
+
+            await botFactory.connect(owner).unpause();
+            expect(await botFactory.paused()).to.be.false;
+
+            await botFactory.connect(owner).createBot(otherAccount.address, { value: fee });
+            expect(await botFactory.ownerOf(1)).to.equal(otherAccount.address);
+        });
+
+        it("Should prevent non-owners from pausing or unpausing", async function () {
+            await expect(botFactory.connect(otherAccount).pause())
+                .to.be.revertedWithCustomError(botFactory, "OwnableUnauthorizedAccount")
+                .withArgs(otherAccount.address);
+
+            await botFactory.connect(owner).pause();
+
+            await expect(botFactory.connect(otherAccount).unpause())
+                .to.be.revertedWithCustomError(botFactory, "OwnableUnauthorizedAccount")
+                .withArgs(otherAccount.address);
+        });
+    });
+
+    describe("Upgrades", function() {
+        it("Should allow the owner to upgrade the contract", async function () {
+            const OqiaBotFactoryV2 = await ethers.getContractFactory("OqiaBotFactory");
+            const upgradedBotFactory = await upgrades.upgradeProxy(botFactory.target, OqiaBotFactoryV2, {
+                call: { fn: "reinitialize", args: [2] }
+            });
+            await upgradedBotFactory.waitForDeployment();
+
+            expect(await upgradedBotFactory.version()).to.equal("2");
+        });
+
+        it("Should prevent non-owners from upgrading the contract", async function () {
+            const OqiaBotFactoryV2 = await ethers.getContractFactory("OqiaBotFactory");
+            await expect(
+                upgrades.upgradeProxy(botFactory.target, OqiaBotFactoryV2.connect(otherAccount))
+            ).to.be.revertedWithCustomError(botFactory, 'OwnableUnauthorizedAccount').withArgs(otherAccount.address);
         });
     });
 

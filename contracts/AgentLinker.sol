@@ -19,6 +19,8 @@ contract AgentLinker is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     error SelfConnectionNotAllowed();
     /// @notice Thrown when a connection does not exist
     error ConnectionDoesNotExist();
+    /// @notice Thrown when a non-participant tries to toggle a connection
+    error UnauthorizedToggler();
 
     // --- Structs ---
     /**
@@ -104,6 +106,7 @@ contract AgentLinker is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function toggleConnection(bytes32 connectionId) external {
         AgentConnection storage connection = connections[connectionId];
         if (connection.agentA == address(0)) revert ConnectionDoesNotExist();
+        if (msg.sender != connection.agentA && msg.sender != connection.agentB) revert UnauthorizedToggler();
 
         connection.isActive = !connection.isActive;
 

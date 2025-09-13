@@ -33,3 +33,22 @@ Implemented and tested the AgentLinker.sol contract. Also fixed several pre-exis
 
 ## Update (2025-09-13T14:19:10.809Z)
 Improved test coverage for OqiaBotFactory.sol. Refactored existing tests, added comprehensive checks for createBot, tokenURI, admin functions, ERC-2981 royalties, and a reentrancy attack scenario. The test suite for the factory is now robust and covers all critical functionality.
+
+## Update (2025-09-13T14:41:27.286Z)
+feat: Enhance security and test coverage
+
+- **AgentLinker.sol:**
+  - Made the  mapping private to prevent direct access.
+  - Added a  function to securely retrieve an agent's connections.
+  - Added a test case to confirm that external access to the  mapping is not possible.
+
+- **OqiaBotFactory.sol:**
+  - Implemented  functionality to allow the contract to be paused and unpaused.
+  - Implemented  to enable future contract upgrades.
+  - Added a  state variable and a  function for upgrade testing.
+  - Applied the  modifier to  and .
+
+- **OqiaBotFactory.test.js:**
+  - Added comprehensive tests for  functionality.
+  - Added tests for the  upgrade mechanism.
+  - Improved interface checks in  tests.
