@@ -1,0 +1,1 @@
+This file is a marker for blank files created for architecture planning. If you see this file, the corresponding file or folder is intentionally left empty for future development or organizational purposes.

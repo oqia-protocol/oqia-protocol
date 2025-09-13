@@ -21,6 +21,23 @@ contract OqiaBotFactory is
     UUPSUpgradeable,
     ReentrancyGuardUpgradeable 
 {
+    /// @notice Fee required to create a new agent
+    uint256 public agentCreationFee;
+    /// @notice Royalty basis points (e.g., 50 = 0.5%)
+    uint96 public royaltyBps;
+    /// @notice Address that receives fees and royalties
+    address public feeRecipient;
+
+    /// @notice Emitted when agent creation fee is updated
+    event AgentCreationFeeUpdated(uint256 newFee);
+    /// @notice Emitted when royalty info is updated
+    event RoyaltyInfoUpdated(address recipient, uint96 bps);
+
+    /// @notice Thrown when fee is incorrect
+    error IncorrectFee();
+
+    /// @dev ERC-2981 interface id
+    bytes4 private constant _INTERFACE_ID_ERC2981 = 0x2a55205a;
     /// @notice Counter for token IDs
     uint256 private _tokenIdCounter;
     /// @notice Address of the agent wallet implementation contract
@@ -58,30 +75,37 @@ contract OqiaBotFactory is
         __ReentrancyGuard_init();
         agentWalletImplementation = _agentWalletImplementation;
         _tokenIdCounter = 1; // Start from 1
+        agentCreationFee = 0.001 ether;
+        royaltyBps = 50; // 0.5%
+        feeRecipient = msg.sender;
     }
     
     function createBot(address botOwner) public onlyOwner nonReentrant returns (address) {
         if (botOwner == address(0)) revert InvalidOwner();
-        
+        if (msg.value != agentCreationFee) revert IncorrectFee();
+
         uint256 tokenId = _tokenIdCounter;
         _tokenIdCounter++;
-        
+
         // Create a clone of the agent wallet implementation
         address agentWalletClone = Clones.clone(agentWalletImplementation);
-        
+
         // Initialize the cloned wallet
         OqiaAgentWallet(payable(agentWalletClone)).initialize(botOwner);
-        
+
         // Mint the ownership NFT
         _safeMint(botOwner, tokenId);
-        
+
         // Store mappings
         botWalletOf[tokenId] = agentWalletClone;
         tokenOfWallet[agentWalletClone] = tokenId;
-        
+
+        // Transfer fee to recipient
+        payable(feeRecipient).transfer(msg.value);
+
         emit BotCreated(tokenId, botOwner, agentWalletClone);
         emit AgentCreated(tokenId, botOwner, agentWalletClone);
-        
+
         return agentWalletClone;
     }
     
@@ -111,6 +135,30 @@ contract OqiaBotFactory is
     function setTokenURI(uint256 tokenId, string calldata uri) external onlyOwner {
         _requireOwned(tokenId);
         _tokenURIs[tokenId] = uri;
+    }
+
+    /// @notice Set agent creation fee
+    function setAgentCreationFee(uint256 fee) external onlyOwner {
+        agentCreationFee = fee;
+        emit AgentCreationFeeUpdated(fee);
+    }
+
+    /// @notice Set royalty info
+    function setRoyaltyInfo(address recipient, uint96 bps) external onlyOwner {
+        feeRecipient = recipient;
+        royaltyBps = bps;
+        emit RoyaltyInfoUpdated(recipient, bps);
+    }
+
+    /// @dev ERC-2981 royalty info
+    function royaltyInfo(uint256, uint256 salePrice) external view returns (address, uint256) {
+        uint256 royaltyAmount = (salePrice * royaltyBps) / 10000;
+        return (feeRecipient, royaltyAmount);
+    }
+
+    /// @dev ERC165 support for ERC-2981
+    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
+        return super.supportsInterface(interfaceId) || interfaceId == _INTERFACE_ID_ERC2981;
     }
     
     function _toString(uint256 value) internal pure returns (string memory) {
