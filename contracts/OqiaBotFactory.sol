@@ -80,9 +80,13 @@ contract OqiaBotFactory is
         feeRecipient = msg.sender;
     }
     
-    function createBot(address botOwner) public onlyOwner nonReentrant returns (address) {
+    function createBot(address botOwner) external payable onlyOwner nonReentrant returns (address) {
+        return _createBot(botOwner, msg.value);
+    }
+
+    function _createBot(address botOwner, uint256 feeAmount) internal returns (address) {
         if (botOwner == address(0)) revert InvalidOwner();
-        if (msg.value != agentCreationFee) revert IncorrectFee();
+        if (feeAmount != agentCreationFee) revert IncorrectFee();
 
         uint256 tokenId = _tokenIdCounter;
         _tokenIdCounter++;
@@ -101,7 +105,7 @@ contract OqiaBotFactory is
         tokenOfWallet[agentWalletClone] = tokenId;
 
         // Transfer fee to recipient
-        payable(feeRecipient).transfer(msg.value);
+        payable(feeRecipient).transfer(feeAmount);
 
         emit BotCreated(tokenId, botOwner, agentWalletClone);
         emit AgentCreated(tokenId, botOwner, agentWalletClone);
@@ -110,8 +114,8 @@ contract OqiaBotFactory is
     }
     
     // Legacy function for backward compatibility
-    function mintAgent(address to) public onlyOwner returns (uint256) {
-        address wallet = createBot(to);
+    function mintAgent(address to) public payable onlyOwner returns (uint256) {
+        address wallet = _createBot(to, msg.value);
         return tokenOfWallet[wallet];
     }
     

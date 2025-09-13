@@ -32,7 +32,8 @@ describe("OqiaBotFactory", function () {
 
     describe("Agent Minting", function () {
         it("Should mint a new agent, create an agent wallet, and emit an event", async function () {
-            const mintTx = await botFactory.connect(owner).mintAgent(otherAccount.address);
+            const fee = await botFactory.agentCreationFee();
+            const mintTx = await botFactory.connect(owner).mintAgent(otherAccount.address, { value: fee });
             const receipt = await mintTx.wait();
 
             const agentCreatedEvent = receipt.logs.find(log => {
@@ -43,9 +44,6 @@ describe("OqiaBotFactory", function () {
                     return false;
                 }
             });
-
-            expect(agentCreatedEvent).to.not.be.undefined;
-
             const { tokenId, agentWallet: agentWalletAddress, owner: eventOwner } = agentCreatedEvent.args;
 
             expect(await botFactory.ownerOf(tokenId)).to.equal(otherAccount.address);
@@ -62,6 +60,48 @@ describe("OqiaBotFactory", function () {
             await expect(botFactory.connect(otherAccount).mintAgent(otherAccount.address))
                 .to.be.revertedWithCustomError(botFactory, "OwnableUnauthorizedAccount")
                 .withArgs(otherAccount.address);
+        });
+
+        it("Should require the correct agent creation fee and send it to the fee recipient", async function () {
+            // Set a custom fee and recipient
+            const fee = ethers.parseEther("0.01");
+            await botFactory.connect(owner).setAgentCreationFee(fee);
+            await botFactory.connect(owner).setRoyaltyInfo(otherAccount.address, 50);
+
+            // Try minting without fee
+            await expect(
+                botFactory.connect(owner).createBot(otherAccount.address, { value: 0 })
+            ).to.be.revertedWithCustomError(botFactory, "IncorrectFee");
+
+            // Mint with correct fee
+            const recipientBalanceBefore = await ethers.provider.getBalance(otherAccount.address);
+            const tx = await botFactory.connect(owner).createBot(otherAccount.address, { value: fee });
+            await tx.wait();
+            const recipientBalanceAfter = await ethers.provider.getBalance(otherAccount.address);
+            expect(recipientBalanceAfter - recipientBalanceBefore).to.equal(fee);
+        });
+        it("Should prevent non-owners from minting agents", async function () {
+            await expect(botFactory.connect(otherAccount).mintAgent(otherAccount.address))
+                .to.be.revertedWithCustomError(botFactory, "OwnableUnauthorizedAccount")
+                .withArgs(otherAccount.address);
+        });
+        it("Should require the correct agent creation fee and send it to the fee recipient", async function () {
+            // Set a custom fee and recipient
+            const fee = ethers.parseEther("0.01");
+            await botFactory.connect(owner).setAgentCreationFee(fee);
+            await botFactory.connect(owner).setRoyaltyInfo(otherAccount.address, 50);
+
+            // Try minting without fee
+            await expect(
+                botFactory.connect(owner).createBot(otherAccount.address, { value: 0 })
+            ).to.be.revertedWithCustomError(botFactory, "IncorrectFee");
+
+            // Mint with correct fee
+            const recipientBalanceBefore = await ethers.provider.getBalance(otherAccount.address);
+            const tx = await botFactory.connect(owner).createBot(otherAccount.address, { value: fee });
+            await tx.wait();
+            const recipientBalanceAfter = await ethers.provider.getBalance(otherAccount.address);
+            expect(recipientBalanceAfter - recipientBalanceBefore).to.equal(fee);
         });
     });
 });
