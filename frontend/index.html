@@ -3,36 +3,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oqia Protocol</title>
+    <title>Oqia Protocol - Autonomous AI Agents</title>
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <h1>Oqia Protocol</h1>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <h1>🤖 Oqia Protocol</h1>
+                <p>Autonomous AI Agents on Blockchain</p>
+            </div>
+            <div class="wallet-section">
+                <div id="wallet-info" class="wallet-info">
+                    <div class="status-indicator" id="status-indicator"></div>
+                    <span id="wallet-status">Not Connected</span>
+                    <span id="wallet-address" class="address"></span>
+                </div>
+                <button id="connect-wallet-btn" class="btn btn-primary">Connect Wallet</button>
+            </div>
+        </header>
 
-    <div id="wallet-info">
-        <p><strong>Status:</strong> <span id="wallet-status">Not Connected</span></p>
-        <p><strong>Address:</strong> <span id="wallet-address">N/A</span></p>
-        <button id="connect-wallet-btn">Connect Wallet</button>
-    </div>
+        <main class="main">
+            <div class="dashboard" id="dashboard" style="display: none;">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Your Agents</h3>
+                        <div class="stat-value" id="agent-count">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Sessions</h3>
+                        <div class="stat-value" id="session-count">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Value</h3>
+                        <div class="stat-value" id="total-value">0 ETH</div>
+                    </div>
+                </div>
 
-    <div id="mint-agent">
-        <h2>Mint New Agent</h2>
-        <button id="mint-agent-btn">Mint Agent NFT</button>
-    </div>
+                <div class="actions-grid">
+                    <div class="action-card">
+                        <h2>🚀 Create New Agent</h2>
+                        <p>Deploy a new autonomous AI agent with its own wallet and NFT ownership token.</p>
+                        <button id="mint-agent-btn" class="btn btn-primary btn-large">Create Agent</button>
+                    </div>
 
-    <div id="session-keys">
-        <h2>Session Keys</h2>
-        <div id="grant-session-key">
-            <h3>Grant Session Key</h3>
-            <input type="text" id="session-key-address" placeholder="Session Key Address">
-            <input type="text" id="session-key-function" placeholder="Function Selector (e.g., 0x12345678)">
-            <input type="number" id="session-key-valid-until" placeholder="Valid Until (Timestamp)">
-            <input type="number" id="session-key-allowance" placeholder="Value Allowance (Wei)">
-            <button id="grant-session-key-btn">Grant Key</button>
+                    <div class="action-card">
+                        <h2>🔑 Manage Session Keys</h2>
+                        <p>Grant temporary permissions to your agents for autonomous operations.</p>
+                        <div class="form-group">
+                            <label for="session-key-address">Session Key Address</label>
+                            <input type="text" id="session-key-address" placeholder="0x..." class="input">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="session-key-function">Function Selector</label>
+                                <input type="text" id="session-key-function" placeholder="0x00000000" class="input">
+                            </div>
+                            <div class="form-group">
+                                <label for="session-key-duration">Duration (hours)</label>
+                                <input type="number" id="session-key-duration" placeholder="24" class="input" min="1" max="168">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="session-key-allowance">Value Limit (ETH)</label>
+                            <input type="number" id="session-key-allowance" placeholder="0.1" class="input" step="0.001" min="0">
+                        </div>
+                        <button id="grant-session-key-btn" class="btn btn-secondary">Grant Session Key</button>
+                    </div>
+                </div>
+
+                <div class="agents-section">
+                    <h2>Your Agents</h2>
+                    <div id="agents-list" class="agents-grid">
+                        <!-- Agent cards will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="welcome" id="welcome">
+                <div class="welcome-content">
+                    <h2>Welcome to Oqia Protocol</h2>
+                    <p>Create and manage autonomous AI agents that operate independently on the blockchain.</p>
+                    <ul class="features">
+                        <li>🤖 <strong>Autonomous Agents:</strong> AI-powered wallets that can execute trades and strategies</li>
+                        <li>🎫 <strong>NFT Ownership:</strong> Each agent is represented by a unique NFT you own</li>
+                        <li>🔐 <strong>Session Keys:</strong> Grant temporary, limited permissions for autonomous operation</li>
+                        <li>🧩 <strong>Modular System:</strong> Install different capabilities and strategies</li>
+                    </ul>
+                    <button id="get-started-btn" class="btn btn-primary btn-large">Get Started</button>
+                </div>
+            </div>
+        </main>
+
+        <div id="loading" class="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Processing transaction...</p>
+        </div>
+
+        <div id="notification" class="notification" style="display: none;">
+            <div class="notification-content">
+                <span id="notification-message"></span>
+                <button id="notification-close" class="notification-close">&times;</button>
+            </div>
         </div>
     </div>
 
-    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.umd.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
