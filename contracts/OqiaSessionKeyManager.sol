@@ -54,9 +54,9 @@ contract OqiaSessionKeyManager is Ownable, ReentrancyGuard {
     error InvalidAgentWallet();
     error ExecutionFailed();
     
-    constructor() Ownable(msg.sender) {
-        // For testing, we'll make botFactory optional
-        botFactory = IOqiaBotFactory(address(0));
+    constructor(address _botFactory) Ownable(msg.sender) {
+        require(_botFactory != address(0), "Invalid bot factory address");
+        botFactory = IOqiaBotFactory(_botFactory);
     }
     
     modifier onlyAgentOwner(address agentWallet) {

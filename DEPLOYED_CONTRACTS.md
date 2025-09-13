@@ -1,7 +1,7 @@
-# Deployed Contracts (Local Testnet)
+# Deployed Contracts (Sepolia Testnet)
 
-*   **OqiaAgentWallet:** `0x0B306BF915C4d645ff596e518fAf3F9669b97016`
-*   **OqiaBotFactory:** `0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1`
-*   **OqiaSessionKeyManager:** `0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE`
-*   **MockUniswapRouter:** `0x68B1D87F95878fE05B998F19b66F4baba5De1aed`
-*   **SimpleArbitrageModule:** `0x3Aa5ebB10DC797CAC828524e59A333d0A371443c`
+*   **OqiaAgentWallet:** `0x48C785681f44E2035969709e80aa8B4108626cFe`
+*   **OqiaBotFactory:** `0x77D65EA37E6be056d635fB7d71d1578eB078612C`
+*   **OqiaModuleRegistry:** `0x533AAB779008dce7117f6e2cA398cF865Cd4c249`
+*   **SimpleArbitrageModule:** `0xa465e8f246950326dB77286eb4427F29400e87Bb`
+*   **OqiaSessionKeyManager:** `0x4566F5f168d0b64DfC05148a966339DC5F2F68d5`
