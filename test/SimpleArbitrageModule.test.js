@@ -61,9 +61,10 @@ describe("SimpleArbitrageModule (Refactored)", function () {
 
     it("Should execute a trade successfully WHEN LICENSED", async function () {
         // 1. Create a new bot wallet via the factory, owned by 'other' signer
-        const tx = await factory.createBot(other.address);
+        const fee = await factory.agentCreationFee();
+        const tx = await factory.createBot(other.address, { value: fee });
         const receipt = await tx.wait();
-        const event = receipt.logs.find(e => e.eventName === "BotCreated");
+        const event = receipt.logs.find(log => log.fragment && log.fragment.name === "BotCreated");
         const agentWalletAddress = event.args.wallet;
         const agentWallet = await ethers.getContractAt("OqiaAgentWallet", agentWalletAddress);
 
