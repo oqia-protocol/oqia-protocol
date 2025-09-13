@@ -1,8 +1,8 @@
-// Script to update LOCAL_COMMITMENT_MESSAGE.md with a new message and timestamp
+// Script to update AI_COMMITMENT_MESSAGE.md with a new message and timestamp
 const fs = require('fs');
 const path = require('path');
 
-const COMMITMENT_PATH = path.resolve(__dirname, '../docs/LOCAL_COMMITMENT_MESSAGE.md');
+const COMMITMENT_PATH = path.resolve(__dirname, '../docs/AI_COMMITMENT_MESSAGE.md');
 
 function getTimestamp() {
     return new Date().toISOString();
