@@ -30,3 +30,6 @@ Created blank files for architecture planning: docs/ARCHITECTURE.md, scripts/gra
 
 ## Update (2025-09-13T13:38:48.779Z)
 Implemented and tested the AgentLinker.sol contract. Also fixed several pre-existing failing tests related to bot creation fees.
+
+## Update (2025-09-13T14:19:10.809Z)
+Improved test coverage for OqiaBotFactory.sol. Refactored existing tests, added comprehensive checks for createBot, tokenURI, admin functions, ERC-2981 royalties, and a reentrancy attack scenario. The test suite for the factory is now robust and covers all critical functionality.
