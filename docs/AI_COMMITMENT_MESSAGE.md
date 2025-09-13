@@ -52,3 +52,9 @@ feat: Enhance security and test coverage
   - Added comprehensive tests for  functionality.
   - Added tests for the  upgrade mechanism.
   - Improved interface checks in  tests.
+
+## Update (2025-09-13T16:52:49.491Z)
+Fixed OqiaSessionKeyManager deployment by correcting the constructor. Deployed all contracts to Sepolia, resolved deployment script issues, and documented the final addresses.
+
+## Update (2025-09-13T16:52:50.554Z)
+Fixed OqiaSessionKeyManager deployment by correcting the constructor. Deployed all contracts to Sepolia, resolved deployment script issues, and documented the final addresses.
